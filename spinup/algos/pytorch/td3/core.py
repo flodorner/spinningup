@@ -73,7 +73,7 @@ class MLPQFunction(nn.Module):
 class MLPActorCritic(nn.Module):
 
     def __init__(self, observation_space, action_space, hidden_sizes=(256,256),
-                 activation=nn.ReLU,use_split=False):
+                 activation=nn.ReLU):
         super().__init__()
 
         obs_dim = observation_space.shape[0]
@@ -81,9 +81,28 @@ class MLPActorCritic(nn.Module):
         act_limit = action_space.high[0]
 
         # build policy and value functions
-        self.pi = MLPActor(obs_dim, act_dim, hidden_sizes, activation, act_limit,use_split=use_split)
-        self.q1 = MLPQFunction(obs_dim, act_dim, hidden_sizes, activation,use_split=use_split)
-        self.q2 = MLPQFunction(obs_dim, act_dim, hidden_sizes, activation,use_split=use_split)
+        self.pi = MLPActor(obs_dim, act_dim, hidden_sizes, activation, act_limit)
+        self.q1 = MLPQFunction(obs_dim, act_dim, hidden_sizes, activation)
+        self.q2 = MLPQFunction(obs_dim, act_dim, hidden_sizes, activation)
+
+    def act(self, obs):
+        with torch.no_grad():
+            return self.pi(obs).numpy()
+
+class MLPActorCriticSplit(nn.Module):
+
+    def __init__(self, observation_space, action_space, hidden_sizes=(256,256),
+                 activation=nn.ReLU):
+        super().__init__()
+
+        obs_dim = observation_space.shape[0]
+        act_dim = action_space.shape[0]
+        act_limit = action_space.high[0]
+
+        # build policy and value functions
+        self.pi = MLPActor(obs_dim, act_dim, hidden_sizes, activation, act_limit,use_split=True)
+        self.q1 = MLPQFunction(obs_dim, act_dim, hidden_sizes, activation,use_split=True)
+        self.q2 = MLPQFunction(obs_dim, act_dim, hidden_sizes, activation,use_split=True)
 
     def act(self, obs):
         with torch.no_grad():
