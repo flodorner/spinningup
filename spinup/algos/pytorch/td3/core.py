@@ -20,19 +20,13 @@ def mlp(sizes, activation, output_activation=nn.Identity):
 class split_model(nn.Module):
     def __init__(self,sizes, activation, output_activation=nn.Identity):
         super(split_model, self).__init__()
-        self.layers = len(sizes) - 1
-        self.layers_a = []
-        for j in range(len(sizes) - 1):
-            act = activation if j < len(sizes) - 2 else output_activation
-            self.layers_a += [nn.Linear(sizes[j], sizes[j + 1]), act()]
-        self.layers_b = []
-        for j in range(len(sizes) - 1):
-            act = activation if j < len(sizes) - 2 else output_activation
-            self.layers_b += [nn.Linear(sizes[j], sizes[j + 1]), act()]
+        self.mlp1 = mlp(sizes, activation, output_activation)
+        self.mlp2 = mlp(sizes, activation, output_activation)
     def forward(self, x):
+        if len(list(x.size()))==1:
+            x = x.unsqueeze(0)
         split = torch.eq(x[:,-1],1).unsqueeze(1)
-        for j in range(self.layers):
-            x = split*self.layers_a(x)+(1-split)*self.layers_b(x)
+        x = split.float()*self.mlp1(x)+torch.logical_not(split).float()*self.mlp2(x)
         return x
 
 def mlp_last_variable_switch(sizes, activation, output_activation=nn.Identity):
