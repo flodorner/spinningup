@@ -18,19 +18,20 @@ def mlp(sizes, activation, output_activation=nn.Identity):
     return nn.Sequential(*layers)
 
 class split_model(nn.Module):
-    def __init__(self,sizes, activation, output_activation=nn.Identity):
+    def __init__(self,sizes, activation, output_activation=nn.Identity,split_index=-1):
         super(split_model, self).__init__()
         self.mlp1 = mlp(sizes, activation, output_activation)
         self.mlp2 = mlp(sizes, activation, output_activation)
+        self.split_index = split_index
     def forward(self, x):
         if len(list(x.size()))==1:
             x = x.unsqueeze(0)
-        split = torch.eq(x[:,-1],1).unsqueeze(1)
+        split = torch.eq(x[:,self.split_index],1).unsqueeze(1)
         x = split.float()*self.mlp1(x)+torch.logical_not(split).float()*self.mlp2(x)
         return x
 
-def mlp_last_variable_switch(sizes, activation, output_activation=nn.Identity):
-    return split_model(sizes, activation, output_activation)
+def mlp_switch(sizes, activation, output_activation=nn.Identity,split_index=-1):
+    return split_model(sizes, activation, output_activation,split_index=split_index)
 
 
 def count_vars(module):
@@ -44,7 +45,7 @@ class MLPActor(nn.Module):
         if not use_split:
             self.pi = mlp(pi_sizes, activation, nn.Tanh)
         else:
-            self.pi = mlp_last_variable_switch(pi_sizes, activation, nn.Tanh)
+            self.pi = mlp_switch(pi_sizes, activation, nn.Tanh)
         self.act_limit = act_limit
 
     def forward(self, obs):
@@ -58,7 +59,7 @@ class MLPQFunction(nn.Module):
         if not use_split:
             self.q = mlp([obs_dim + act_dim] + list(hidden_sizes) + [1], activation)
         else:
-            self.q = mlp_last_variable_switch([obs_dim + act_dim] + list(hidden_sizes) + [1], activation)
+            self.q = mlp_switch([obs_dim + act_dim] + list(hidden_sizes) + [1], activation,split_index=-1-act_dim)
 
     def forward(self, obs, act):
         q = self.q(torch.cat([obs, act], dim=-1))
