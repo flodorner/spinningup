@@ -356,10 +356,6 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
             logger.dump_tabular()
 
 
-import gym
-env = gym.make("MountainCarContinuous-v0")
-td3(lambda: env,ac_kwargs={"hidden_sizes":(256,256)})
-
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
