@@ -47,6 +47,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         polyak=0.995, lr=1e-3, alpha=0.2, batch_size=100, start_steps=10000, 
         update_after=1000, update_every=50, num_test_episodes=10, max_ep_len=1000, 
         logger_kwargs=dict(), save_freq=1):
+
     """
     Soft Actor-Critic (SAC)
 
@@ -143,6 +144,8 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
             the current policy and value function.
 
     """
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print('Using device:', device)
 
     logger = EpochLogger(**logger_kwargs)
     logger.save_config(locals())
@@ -160,6 +163,12 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
     # Create actor-critic module and target networks
     ac = actor_critic(env.observation_space, env.action_space, **ac_kwargs)
     ac_targ = deepcopy(ac)
+    ac.q1 = ac.q1.to(device)
+    ac.q2 = ac.q2.to(device)
+    ac.pi = ac.pi.to(device)
+    ac_targ.q1 = ac_targ.q1.to(device)
+    ac_targ.q2 = ac_targ.q2.to(device)
+    ac_targ.pi = ac_targ.pi.to(device)
 
     # Freeze target networks with respect to optimizers (only update via polyak averaging)
     for p in ac_targ.parameters():
@@ -179,19 +188,19 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
     def compute_loss_q(data):
         o, a, r, o2, d = data['obs'], data['act'], data['rew'], data['obs2'], data['done']
 
-        q1 = ac.q1(o,a)
-        q2 = ac.q2(o,a)
+        q1 = ac.q1(o.to(device),a.to(device))
+        q2 = ac.q2(o.to(device),a.to(device))
 
         # Bellman backup for Q functions
         with torch.no_grad():
             # Target actions come from *current* policy
-            a2, logp_a2 = ac.pi(o2)
+            a2, logp_a2 = ac.pi(o2.to(device))
 
             # Target Q-values
-            q1_pi_targ = ac_targ.q1(o2, a2)
-            q2_pi_targ = ac_targ.q2(o2, a2)
+            q1_pi_targ = ac_targ.q1(o2.to(device), a2.to(device))
+            q2_pi_targ = ac_targ.q2(o2.to(device), a2.to(device))
             q_pi_targ = torch.min(q1_pi_targ, q2_pi_targ)
-            backup = r + gamma * (1 - d) * (q_pi_targ - alpha * logp_a2)
+            backup = r.to(device) + gamma * (1 - d.to(device)) * (q_pi_targ - alpha * logp_a2)
 
         # MSE loss against Bellman backup
         loss_q1 = ((q1 - backup)**2).mean()
@@ -199,24 +208,24 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         loss_q = loss_q1 + loss_q2
 
         # Useful info for logging
-        q_info = dict(Q1Vals=q1.detach().numpy(),
-                      Q2Vals=q2.detach().numpy())
+        q_info = dict(Q1Vals=q1.detach().cpu().numpy(),
+                      Q2Vals=q2.detach().cpu().numpy())
 
         return loss_q, q_info
 
     # Set up function for computing SAC pi loss
     def compute_loss_pi(data):
         o = data['obs']
-        pi, logp_pi = ac.pi(o)
-        q1_pi = ac.q1(o, pi)
-        q2_pi = ac.q2(o, pi)
+        pi, logp_pi = ac.pi(o.to(device))
+        q1_pi = ac.q1(o.to(device), pi)
+        q2_pi = ac.q2(o.to(device), pi)
         q_pi = torch.min(q1_pi, q2_pi)
 
         # Entropy-regularized policy loss
         loss_pi = (alpha * logp_pi - q_pi).mean()
 
         # Useful info for logging
-        pi_info = dict(LogPi=logp_pi.detach().numpy())
+        pi_info = dict(LogPi=logp_pi.detach().cpu().numpy())
 
         return loss_pi, pi_info
 
@@ -264,7 +273,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
                 p_targ.data.add_((1 - polyak) * p.data)
 
     def get_action(o, deterministic=False):
-        return ac.act(torch.as_tensor(o, dtype=torch.float32), 
+        return ac.act(torch.as_tensor(o, dtype=torch.float32).to(device),
                       deterministic)
 
     def test_agent():

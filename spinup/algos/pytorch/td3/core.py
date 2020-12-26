@@ -82,7 +82,7 @@ class MLPActorCritic(nn.Module):
 
     def act(self, obs):
         with torch.no_grad():
-            return self.pi(obs).numpy()
+            return self.pi(obs).cpu().numpy()
 
 class MLPActorCriticSplit(nn.Module):
 
@@ -101,4 +101,4 @@ class MLPActorCriticSplit(nn.Module):
 
     def act(self, obs):
         with torch.no_grad():
-            return self.pi(obs).numpy()
+            return self.pi(obs).cpu().numpy()

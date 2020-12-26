@@ -145,6 +145,8 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
             the current policy and value function.
 
     """
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print('Using device:', device)
 
     logger = EpochLogger(**logger_kwargs)
     logger.save_config(locals())
@@ -162,6 +164,12 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
     # Create actor-critic module and target networks
     ac = actor_critic(env.observation_space, env.action_space, **ac_kwargs)
     ac_targ = deepcopy(ac)
+    ac.pi=ac.pi.to(device)
+    ac_targ.pi = ac_targ.pi.to(device)
+    ac.q1=ac.q1.to(device)
+    ac_targ.q1 = ac_targ.q1.to(device)
+    ac.q2=ac.q2.to(device)
+    ac_targ.q2 = ac_targ.q2.to(device)
 
     # Freeze target networks with respect to optimizers (only update via polyak averaging)
     for p in ac_targ.parameters():
@@ -181,12 +189,12 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
     def compute_loss_q(data):
         o, a, r, o2, d = data['obs'], data['act'], data['rew'], data['obs2'], data['done']
 
-        q1 = ac.q1(o,a)
-        q2 = ac.q2(o,a)
+        q1 = ac.q1(o.to(device),a.to(device))
+        q2 = ac.q2(o.to(device),a.to(device))
 
         # Bellman backup for Q functions
         with torch.no_grad():
-            pi_targ = ac_targ.pi(o2)
+            pi_targ = ac_targ.pi(o2.to(device))
 
             # Target policy smoothing
             epsilon = torch.randn_like(pi_targ) * target_noise
@@ -195,10 +203,10 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
             a2 = torch.clamp(a2, -act_limit, act_limit)
 
             # Target Q-values
-            q1_pi_targ = ac_targ.q1(o2, a2)
-            q2_pi_targ = ac_targ.q2(o2, a2)
+            q1_pi_targ = ac_targ.q1(o2.to(device), a2.to(device))
+            q2_pi_targ = ac_targ.q2(o2.to(device), a2.to(device))
             q_pi_targ = torch.min(q1_pi_targ, q2_pi_targ)
-            backup = r + gamma * (1 - d) * q_pi_targ
+            backup = r.to(device) + gamma * (1 - d.to(device)) * q_pi_targ
 
         # MSE loss against Bellman backup
         loss_q1 = ((q1 - backup)**2).mean()
@@ -206,15 +214,15 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         loss_q = loss_q1 + loss_q2
 
         # Useful info for logging
-        loss_info = dict(Q1Vals=q1.detach().numpy(),
-                         Q2Vals=q2.detach().numpy())
+        loss_info = dict(Q1Vals=q1.detach().cpu().numpy(),
+                         Q2Vals=q2.detach().cpu().numpy())
 
         return loss_q, loss_info
 
     # Set up function for computing TD3 pi loss
     def compute_loss_pi(data):
         o = data['obs']
-        q1_pi = ac.q1(o, ac.pi(o))
+        q1_pi = ac.q1(o.to(device), ac.pi(o.to(device)))
         return -q1_pi.mean()
 
     # Set up optimizers for policy and q-function
@@ -264,7 +272,7 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
                     p_targ.data.add_((1 - polyak) * p.data)
 
     def get_action(o, noise_scale):
-        a = ac.act(torch.as_tensor(o, dtype=torch.float32))
+        a = ac.act(torch.as_tensor(o, dtype=torch.float32).to(device))
         a += noise_scale * np.random.randn(act_dim)
         return np.clip(a, -act_limit, act_limit)
 
@@ -346,6 +354,11 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
             logger.log_tabular('LossQ', average_only=True)
             logger.log_tabular('Time', time.time()-start_time)
             logger.dump_tabular()
+
+
+import gym
+env = gym.make("MountainCarContinuous-v0")
+td3(lambda: env,ac_kwargs={"hidden_sizes":(256,256)})
 
 if __name__ == '__main__':
     import argparse
