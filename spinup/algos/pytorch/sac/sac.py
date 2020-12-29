@@ -205,7 +205,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         q2 = ac.q2(o.to(device),a.to(device))
         if not entropy_constraint == None:
             soft_alpha = soft_alpha_base
-            alpha = softplus(soft_alpha)
+            alpha_var = softplus(soft_alpha)
 
         # Bellman backup for Q functions
         with torch.no_grad():
@@ -216,7 +216,10 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
             q1_pi_targ = ac_targ.q1(o2.to(device), a2.to(device))
             q2_pi_targ = ac_targ.q2(o2.to(device), a2.to(device))
             q_pi_targ = torch.min(q1_pi_targ, q2_pi_targ)
-            backup = r.to(device) + gamma * (1 - d.to(device)) * (q_pi_targ - alpha * logp_a2)
+            if not entropy_constraint == None:
+                backup = r.to(device) + gamma * (1 - d.to(device)) * (q_pi_targ - alpha_var * logp_a2)
+            else:
+                backup = r.to(device) + gamma * (1 - d.to(device)) * (q_pi_targ - alpha * logp_a2)
 
         # MSE loss against Bellman backup
         loss_q1 = ((q1 - backup)**2).mean()
@@ -234,14 +237,17 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         o = data['obs']
         if not entropy_constraint == None:
             soft_alpha = soft_alpha_base
-            alpha = softplus(soft_alpha)
+            alpha_var = softplus(soft_alpha)
         pi, logp_pi = ac.pi(o.to(device))
         q1_pi = ac.q1(o.to(device), pi)
         q2_pi = ac.q2(o.to(device), pi)
         q_pi = torch.min(q1_pi, q2_pi)
 
         # Entropy-regularized policy loss
-        loss_pi = (alpha * logp_pi - q_pi).mean()
+        if not entropy_constraint == None:
+            loss_pi = (alpha_var * logp_pi - q_pi).mean()
+        else:
+            loss_pi = (alpha * logp_pi - q_pi).mean()
 
 
 
