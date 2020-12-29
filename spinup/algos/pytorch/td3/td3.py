@@ -148,11 +148,12 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
     """
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using device:', device)
+    logger = EpochLogger(**logger_kwargs)
+    logger.save_config(locals())
     if not collector_policy==None:
         _, collector_policy = load_policy_and_env(collector_policy)
 
-    logger = EpochLogger(**logger_kwargs)
-    logger.save_config(locals())
+
 
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -305,7 +306,7 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
             if collector_policy == None:
                 a = get_action(o, act_noise)
             else:
-                a = collector_policy(o.to(device))
+                a = collector_policy(torch.as_tensor(o, dtype=torch.float32).to(device))
         else:
             a = env.action_space.sample()
 
