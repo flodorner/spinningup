@@ -401,11 +401,13 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
             logger.log_tabular('Q1Vals', with_min_and_max=True)
             logger.log_tabular('Q2Vals', with_min_and_max=True)
             logger.log_tabular('LogPi', with_min_and_max=True)
-            logger.log_tabular('Alpha', with_min_and_max=True)
             logger.log_tabular('LossPi', average_only=True)
             logger.log_tabular('LossQ', average_only=True)
-            logger.log_tabular('LossAlpha', average_only=True)
+
             logger.log_tabular('Time', time.time()-start_time)
+            if not entropy_constraint == None:
+                logger.log_tabular('Alpha', average_only=True)
+                logger.log_tabular('LossAlpha', average_only=True)
             logger.dump_tabular()
 
 
