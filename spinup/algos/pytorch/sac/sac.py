@@ -5,8 +5,10 @@ import torch
 from torch.optim import Adam
 import gym
 import time
+from spinup.utils.test_policy import load_policy_and_env
 import spinup.algos.pytorch.sac.core as core
 from spinup.utils.logx import EpochLogger
+
 
 
 class ReplayBuffer:
@@ -46,7 +48,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         steps_per_epoch=4000, epochs=100, replay_size=int(1e6), gamma=0.99, 
         polyak=0.995, lr=1e-3, alpha=0.2, batch_size=100, start_steps=10000, 
         update_after=1000, update_every=50, num_test_episodes=10, max_ep_len=1000, 
-        logger_kwargs=dict(), save_freq=1):
+        logger_kwargs=dict(), save_freq=1,entropy_constraint=None,collector_policy=None):
 
     """
     Soft Actor-Critic (SAC)
@@ -143,9 +145,15 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         save_freq (int): How often (in terms of gap between epochs) to save
             the current policy and value function.
 
+        entropy_constraint (float): Minimum expected entropy as described in https://arxiv.org/pdf/1812.05905.pdf (either this or alpha should be set to 0).
+        collector policy (string): directory containing a policy for experience collection (replaces the learnt policy)
     """
+    assert alpha==None or entropy_constraint==None
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using device:', device)
+    if not collector_policy==None:
+        _, collector_policy = load_policy_and_env(collector_policy)
 
     logger = EpochLogger(**logger_kwargs)
     logger.save_config(locals())
@@ -184,12 +192,18 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
     var_counts = tuple(core.count_vars(module) for module in [ac.pi, ac.q1, ac.q2])
     logger.log('\nNumber of parameters: \t pi: %d, \t q1: %d, \t q2: %d\n'%var_counts)
 
+    if not entropy_constraint==None:
+        soft_alpha_base = torch.tensor(0.0, requires_grad=True).to(device)
+        softplus = torch.nn.Softplus().to(device)
+
     # Set up function for computing SAC Q-losses
     def compute_loss_q(data):
         o, a, r, o2, d = data['obs'], data['act'], data['rew'], data['obs2'], data['done']
 
         q1 = ac.q1(o.to(device),a.to(device))
         q2 = ac.q2(o.to(device),a.to(device))
+        soft_alpha = soft_alpha_base
+        alpha = softplus(soft_alpha)
 
         # Bellman backup for Q functions
         with torch.no_grad():
@@ -216,6 +230,8 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
     # Set up function for computing SAC pi loss
     def compute_loss_pi(data):
         o = data['obs']
+        soft_alpha = soft_alpha_base
+        alpha = softplus(soft_alpha)
         pi, logp_pi = ac.pi(o.to(device))
         q1_pi = ac.q1(o.to(device), pi)
         q2_pi = ac.q2(o.to(device), pi)
@@ -224,14 +240,29 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         # Entropy-regularized policy loss
         loss_pi = (alpha * logp_pi - q_pi).mean()
 
+
+
         # Useful info for logging
         pi_info = dict(LogPi=logp_pi.detach().cpu().numpy())
 
         return loss_pi, pi_info
 
+    def compute_loss_alpha(data):
+        soft_alpha = soft_alpha_base
+        alpha = softplus(soft_alpha)
+        o = data['obs']
+        pi, logp_pi = ac.pi(o.to(device))
+        pi_entropy = -logp_pi.mean()
+        loss_alpha = -alpha*(entropy_constraint*act_dim-pi_entropy)
+        alpha_info = dict(Alpha=alpha.detach().cpu().numpy())
+        return loss_alpha, alpha_info
+
+
     # Set up optimizers for policy and q-function
     pi_optimizer = Adam(ac.pi.parameters(), lr=lr)
     q_optimizer = Adam(q_params, lr=lr)
+    if not entropy_constraint == None:
+        alpha_optimizer = Adam([soft_alpha_base], lr=lr)
 
     # Set up model saving
     logger.setup_pytorch_saver(ac)
@@ -257,13 +288,20 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         loss_pi.backward()
         pi_optimizer.step()
 
+        if not entropy_constraint == None:
+            alpha_optimizer.zero_grad()
+            loss_alpha, alpha_info = compute_loss_alpha(data)
+            loss_alpha.backward()
+            alpha_optimizer.step()
+
         # Unfreeze Q-networks so you can optimize it at next DDPG step.
         for p in q_params:
             p.requires_grad = True
 
         # Record things
         logger.store(LossPi=loss_pi.item(), **pi_info)
-
+        if not entropy_constraint == None:
+            logger.store(LossAlpha=loss_alpha.item(), **alpha_info)
         # Finally, update target networks by polyak averaging.
         with torch.no_grad():
             for p, p_targ in zip(ac.parameters(), ac_targ.parameters()):
@@ -298,7 +336,10 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         # from a uniform distribution for better exploration. Afterwards, 
         # use the learned policy. 
         if t > start_steps:
-            a = get_action(o)
+            if collector_policy == None:
+                a = get_action(o)
+            else:
+                a = collector_policy(o.to(device))
         else:
             a = env.action_space.sample()
 
@@ -351,10 +392,13 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
             logger.log_tabular('Q1Vals', with_min_and_max=True)
             logger.log_tabular('Q2Vals', with_min_and_max=True)
             logger.log_tabular('LogPi', with_min_and_max=True)
+            logger.log_tabular('Alpha', with_min_and_max=True)
             logger.log_tabular('LossPi', average_only=True)
             logger.log_tabular('LossQ', average_only=True)
+            logger.log_tabular('LossAlpha', average_only=True)
             logger.log_tabular('Time', time.time()-start_time)
             logger.dump_tabular()
+
 
 if __name__ == '__main__':
     import argparse

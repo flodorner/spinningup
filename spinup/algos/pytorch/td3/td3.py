@@ -7,7 +7,7 @@ import gym
 import time
 import spinup.algos.pytorch.td3.core as core
 from spinup.utils.logx import EpochLogger
-
+from spinup.utils.test_policy import load_policy_and_env
 
 class ReplayBuffer:
     """
@@ -47,7 +47,7 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         polyak=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100, start_steps=10000, 
         update_after=1000, update_every=50, act_noise=0.1, target_noise=0.2, 
         noise_clip=0.5, policy_delay=2, num_test_episodes=10, max_ep_len=1000, 
-        logger_kwargs=dict(), save_freq=1):
+        logger_kwargs=dict(), save_freq=1,collector_policy=None):
     """
     Twin Delayed Deep Deterministic Policy Gradient (TD3)
 
@@ -143,10 +143,13 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
 
         save_freq (int): How often (in terms of gap between epochs) to save
             the current policy and value function.
+        collector policy (string): directory containing a policy for experience collection (replaces the learnt policy)
 
     """
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using device:', device)
+    if not collector_policy==None:
+        _, collector_policy = load_policy_and_env(collector_policy)
 
     logger = EpochLogger(**logger_kwargs)
     logger.save_config(locals())
@@ -296,9 +299,13 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         
         # Until start_steps have elapsed, randomly sample actions
         # from a uniform distribution for better exploration. Afterwards, 
-        # use the learned policy (with some noise, via act_noise). 
+        # use the learned policy (with some noise, via act_noise).
+
         if t > start_steps:
-            a = get_action(o, act_noise)
+            if collector_policy == None:
+                a = get_action(o, act_noise)
+            else:
+                a = collector_policy(o.to(device))
         else:
             a = env.action_space.sample()
 
