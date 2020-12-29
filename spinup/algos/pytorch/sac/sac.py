@@ -203,8 +203,9 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
 
         q1 = ac.q1(o.to(device),a.to(device))
         q2 = ac.q2(o.to(device),a.to(device))
-        soft_alpha = soft_alpha_base
-        alpha = softplus(soft_alpha)
+        if not entropy_constraint == None:
+            soft_alpha = soft_alpha_base
+            alpha = softplus(soft_alpha)
 
         # Bellman backup for Q functions
         with torch.no_grad():
@@ -231,8 +232,9 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
     # Set up function for computing SAC pi loss
     def compute_loss_pi(data):
         o = data['obs']
-        soft_alpha = soft_alpha_base
-        alpha = softplus(soft_alpha)
+        if not entropy_constraint == None:
+            soft_alpha = soft_alpha_base
+            alpha = softplus(soft_alpha)
         pi, logp_pi = ac.pi(o.to(device))
         q1_pi = ac.q1(o.to(device), pi)
         q2_pi = ac.q2(o.to(device), pi)
