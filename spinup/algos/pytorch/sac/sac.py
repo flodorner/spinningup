@@ -194,7 +194,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
     logger.log('\nNumber of parameters: \t pi: %d, \t q1: %d, \t q2: %d\n'%var_counts)
 
     if not entropy_constraint==None:
-        soft_alpha_base = torch.tensor(0.0, requires_grad=True).to(device)
+        soft_alpha_base = torch.tensor(0.0, requires_grad=True)
         softplus = torch.nn.Softplus().to(device)
 
     # Set up function for computing SAC Q-losses
@@ -204,7 +204,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         q1 = ac.q1(o.to(device),a.to(device))
         q2 = ac.q2(o.to(device),a.to(device))
         if not entropy_constraint == None:
-            soft_alpha = soft_alpha_base
+            soft_alpha = soft_alpha_base.to(device)
             alpha_var = softplus(soft_alpha)
 
         # Bellman backup for Q functions
@@ -236,7 +236,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
     def compute_loss_pi(data):
         o = data['obs']
         if not entropy_constraint == None:
-            soft_alpha = soft_alpha_base
+            soft_alpha = soft_alpha_base.to(device)
             alpha_var = softplus(soft_alpha)
         pi, logp_pi = ac.pi(o.to(device))
         q1_pi = ac.q1(o.to(device), pi)
@@ -257,7 +257,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         return loss_pi, pi_info
 
     def compute_loss_alpha(data):
-        soft_alpha = soft_alpha_base
+        soft_alpha = soft_alpha_base.to(device)
         alpha = softplus(soft_alpha)
         o = data['obs']
         pi, logp_pi = ac.pi(o.to(device))
@@ -409,7 +409,6 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
                 logger.log_tabular('Alpha', average_only=True)
                 logger.log_tabular('LossAlpha', average_only=True)
             logger.dump_tabular()
-
 
 if __name__ == '__main__':
     import argparse
