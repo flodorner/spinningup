@@ -21,6 +21,22 @@ def mlp(sizes, activation, output_activation=nn.Identity):
         layers += [nn.Linear(sizes[j], sizes[j+1]), act()]
     return nn.Sequential(*layers)
 
+class split_model(nn.Module):
+    def __init__(self,sizes, activation, output_activation=nn.Identity,split_index=-1):
+        super(split_model, self).__init__()
+        self.mlp1 = mlp(sizes, activation, output_activation)
+        self.mlp2 = mlp(sizes, activation, output_activation)
+        self.split_index = split_index
+    def forward(self, x):
+        if len(list(x.size()))==1:
+            x = x.unsqueeze(0)
+        split = torch.eq(x[:,self.split_index],1).unsqueeze(1)
+        x = split.float()*self.mlp1(x)+torch.logical_not(split).float()*self.mlp2(x)
+        return x
+
+def mlp_switch(sizes, activation, output_activation=nn.Identity,split_index=-1):
+    return split_model(sizes, activation, output_activation,split_index=split_index)
+
 
 def count_vars(module):
     return sum([np.prod(p.shape) for p in module.parameters()])
@@ -65,9 +81,12 @@ class Actor(nn.Module):
 
 class MLPCategoricalActor(Actor):
     
-    def __init__(self, obs_dim, act_dim, hidden_sizes, activation):
+    def __init__(self, obs_dim, act_dim, hidden_sizes, activation,use_split=False):
         super().__init__()
-        self.logits_net = mlp([obs_dim] + list(hidden_sizes) + [act_dim], activation)
+        if not use_split:
+            self.logits_net = mlp([obs_dim] + list(hidden_sizes) + [act_dim], activation)
+        else:
+            self.logits_net = mlp_switch([obs_dim] + list(hidden_sizes) + [act_dim], activation)
 
     def _distribution(self, obs):
         logits = self.logits_net(obs)
@@ -79,11 +98,14 @@ class MLPCategoricalActor(Actor):
 
 class MLPGaussianActor(Actor):
 
-    def __init__(self, obs_dim, act_dim, hidden_sizes, activation):
+    def __init__(self, obs_dim, act_dim, hidden_sizes, activation,use_split=False):
         super().__init__()
         log_std = -0.5 * np.ones(act_dim, dtype=np.float32)
         self.log_std = torch.nn.Parameter(torch.as_tensor(log_std))
-        self.mu_net = mlp([obs_dim] + list(hidden_sizes) + [act_dim], activation)
+        if not use_split:
+            self.mu_net = mlp([obs_dim] + list(hidden_sizes) + [act_dim], activation)
+        else:
+            self.mu_net = mlp_switch([obs_dim] + list(hidden_sizes) + [act_dim], activation)
 
     def _distribution(self, obs):
         mu = self.mu_net(obs)
@@ -96,9 +118,12 @@ class MLPGaussianActor(Actor):
 
 class MLPCritic(nn.Module):
 
-    def __init__(self, obs_dim, hidden_sizes, activation):
+    def __init__(self, obs_dim, hidden_sizes, activation,use_split=False):
         super().__init__()
-        self.v_net = mlp([obs_dim] + list(hidden_sizes) + [1], activation)
+        if not use_split:
+            self.v_net = mlp([obs_dim] + list(hidden_sizes) + [1], activation)
+        else:
+            self.v_net = mlp_switch([obs_dim] + list(hidden_sizes) + [1], activation)
 
     def forward(self, obs):
         return torch.squeeze(self.v_net(obs), -1) # Critical to ensure v has right shape.
@@ -122,6 +147,34 @@ class MLPActorCritic(nn.Module):
 
         # build value function
         self.v  = MLPCritic(obs_dim, hidden_sizes, activation)
+
+    def step(self, obs):
+        with torch.no_grad():
+            pi = self.pi._distribution(obs)
+            a = pi.sample()
+            logp_a = self.pi._log_prob_from_distribution(pi, a)
+            v = self.v(obs)
+        return a.numpy(), v.numpy(), logp_a.numpy()
+
+    def act(self, obs):
+        return self.step(obs)[0]
+
+class MLPActorCriticSplit(nn.Module):
+
+    def __init__(self, observation_space, action_space,
+                 hidden_sizes=(64,64), activation=nn.Tanh):
+        super().__init__()
+
+        obs_dim = observation_space.shape[0]
+
+        # policy builder depends on action space
+        if isinstance(action_space, Box):
+            self.pi = MLPGaussianActor(obs_dim, action_space.shape[0], hidden_sizes, activation,use_split=True)
+        elif isinstance(action_space, Discrete):
+            self.pi = MLPCategoricalActor(obs_dim, action_space.n, hidden_sizes, activation,use_split=True)
+
+        # build value function
+        self.v  = MLPCritic(obs_dim, hidden_sizes, activation,use_split=True)
 
     def step(self, obs):
         with torch.no_grad():
