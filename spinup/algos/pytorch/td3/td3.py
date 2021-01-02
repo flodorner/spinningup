@@ -1,5 +1,4 @@
 from copy import deepcopy
-from gym.spaces import Box
 import itertools
 import numpy as np
 import torch
@@ -15,51 +14,45 @@ class ReplayBuffer:
     A simple FIFO experience replay buffer for TD3 agents.
     """
 
-    def __init__(self, obs_dim, act_dim, size, gamma, threshold, num_duplications=10):
+    def __init__(self, env, obs_dim, act_dim, size, p_var=10):
+        self.env = env
         self.obs_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
         self.obs2_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
         self.act_buf = np.zeros(core.combined_shape(size, act_dim), dtype=np.float32)
         self.rew_buf = np.zeros(size, dtype=np.float32)
-        self.cum_cost_buf = np.zeros(size, dtype=np.float32)
-        self.cum_cost2_buf = np.zeros(size, dtype=np.float32)
-        #self.time_buf = np.zeros(size, dtype=np.float32)
         self.done_buf = np.zeros(size, dtype=np.float32)
         self.ptr, self.size, self.max_size = 0, 0, size
-        self.num_duplications = num_duplications
-        self.gamma = gamma
-        self.threshold = threshold
+        self.p_var = p_var
+        self.threshold = env.threshold
 
-    def store(self, obs, act, rew, next_obs, cost, eps_len, done):
+    def store(self, obs, act, rew, next_obs, done):
         self.obs_buf[self.ptr] = obs
         self.obs2_buf[self.ptr] = next_obs
         self.act_buf[self.ptr] = act
         self.rew_buf[self.ptr] = rew
-        if self.ptr > 0: self.cum_cost_buf[self.ptr]=self.cum_cost2_buf[self.ptr-1]
-        self.cum_cost2_buf[self.ptr] = self.cum_cost_buf[self.ptr] + cost
-        #self.time_buf[self.ptr] = eps_len
         self.done_buf[self.ptr] = done
         self.ptr = (self.ptr+1) % self.max_size
         self.size = min(self.size+1, self.max_size)
 
     def sample_batch(self, batch_size=32):
-        var = 10
         idxs = np.random.randint(0, self.size, size=batch_size)
-        c = self.cum_cost_buf[idxs]
-        c2 = self.cum_cost2_buf[idxs]
-        cp = c + np.random.randint(-var+1, var, batch_size)
-        cp2 = c2 + np.random.randint(-var+1, var, batch_size) #should perform clipping
-        cp_cliped = np.zeros(cp.size)
-        cp2_cliped = np.zeros(cp2.size)
-        cp_cliped[c<self.threshold] = np.clip(cp[c<self.threshold], None, self.threshold-1)
-        cp_cliped[c>=self.threshold] = np.clip(cp[c>=self.threshold], self.threshold, None)
-        cp2_cliped[c2<self.threshold] = np.clip(cp2[c2<self.threshold], None, self.threshold-1)
-        cp2_cliped[c2>=self.threshold] = np.clip(cp2[c2>=self.threshold], self.threshold, None)
-        obs = np.hstack((self.obs_buf[idxs].reshape((batch_size,-1)),cp_cliped.reshape((batch_size,-1))))
-        obs2 = np.hstack((self.obs2_buf[idxs].reshape((batch_size,-1)),cp2_cliped.reshape((batch_size,-1))))
+        obs=self.obs_buf[idxs]
+        obs2=self.obs2_buf[idxs]
+        rew=self.rew_buf[idxs]
+        for i in range(batch_size):
+            if obs2[i, -1] > self.threshold:
+                rew[i] += self.env.get_add_cost(np.random.randint(0, self.p_var, 1))
+            else:
+                low = -1*min(min(obs[i, -1], obs2[i, -1]), self.p_var)+1
+                high = min((self.threshold - max(obs[i, -1], obs2[i, -1])), self.p_var)
+                p = np.random.randint(low, high, 1)
+                obs2[i, -1] += p
+                obs[i, -1] += p
+
         batch = dict(obs=obs,
                      obs2=obs2,
                      act=self.act_buf[idxs],
-                     rew=self.rew_buf[idxs],
+                     rew=rew,
                      done=self.done_buf[idxs])
         return {k: torch.as_tensor(v, dtype=torch.float32) for k,v in batch.items()}
 
@@ -69,7 +62,7 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         steps_per_epoch=4000, epochs=100, replay_size=int(1e6), gamma=0.99,
         polyak=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100, start_steps=10000,
         update_after=1000, update_every=50, act_noise=0.1, target_noise=0.2,
-        noise_clip=0.5, cost_threshold=25, policy_delay=2, num_test_episodes=10, max_ep_len=1000,
+        noise_clip=0.5, policy_delay=2, num_test_episodes=10, max_ep_len=1000,
         logger_kwargs=dict(), save_freq=1):
     """
     Twin Delayed Deep Deterministic Policy Gradient (TD3)
@@ -185,10 +178,7 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
     act_limit = env.action_space.high[0]
 
     # Create actor-critic module and target networks
-    low = np.concatenate([env.observation_space.low,np.array([0])])
-    high = np.concatenate([env.observation_space.high,np.array([np.inf])])
-    aug_space = Box(low=low,high=high,dtype=np.float32)
-    ac = actor_critic(aug_space, env.action_space, **ac_kwargs)
+    ac = actor_critic(env.observation_space, env.action_space, **ac_kwargs)
     ac_targ = deepcopy(ac)
     ac.pi=ac.pi.to(device)
     ac_targ.pi = ac_targ.pi.to(device)
@@ -205,7 +195,7 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
     q_params = itertools.chain(ac.q1.parameters(), ac.q2.parameters())
 
     # Experience buffer
-    replay_buffer = ReplayBuffer(obs_dim=obs_dim, act_dim=act_dim, size=replay_size, gamma=gamma, threshold=cost_threshold)
+    replay_buffer = ReplayBuffer(env=env, obs_dim=obs_dim, act_dim=act_dim, size=replay_size)
 
     # Count variables (protip: try to get a feel for how different size networks behave!)
     var_counts = tuple(core.count_vars(module) for module in [ac.pi, ac.q1, ac.q2])
@@ -304,13 +294,12 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
 
     def test_agent():
         for j in range(num_test_episodes):
-            o, d, ep_ret, ep_len, ep_cost = test_env.reset(), False, 0, 0, 0
+            o, d, ep_ret, ep_len = test_env.reset(), False, 0, 0
             while not(d or (ep_len == max_ep_len)):
                 # Take deterministic actions at test time (noise_scale=0)
-                o, r, d, info = test_env.step(get_action(np.concatenate((o, np.array([ep_cost]))), 0))
+                o, r, d, _ = test_env.step(get_action(o, 0))
                 ep_ret += r
                 ep_len += 1
-                ep_cost += info["cost"]
             logger.store(TestEpRet=ep_ret, TestEpLen=ep_len)
 
     # Prepare for interaction with environment
@@ -330,7 +319,7 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
             a = env.action_space.sample()
 
         # Step the env
-        o2, r, d, info = env.step(a)
+        o2, r, d, _ = env.step(a)
         ep_ret += r
         ep_len += 1
 
@@ -340,7 +329,7 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         d = False if ep_len==max_ep_len else d
 
         # Store experience to replay buffer
-        replay_buffer.store(o, a, r, o2, info["cost"], ep_len, d)
+        replay_buffer.store(o, a, r, o2, d)
 
         # Super critical, easy to overlook step: make sure to update
         # most recent observation!
