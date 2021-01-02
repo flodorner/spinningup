@@ -14,7 +14,7 @@ class ReplayBuffer:
     A simple FIFO experience replay buffer for TD3 agents.
     """
 
-    def __init__(self, env, obs_dim, act_dim, size, p_var=10):
+    def __init__(self, env, obs_dim, act_dim, size, data_aug=False, p_var=10):
         self.env = env
         self.obs_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
         self.obs2_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
@@ -22,6 +22,7 @@ class ReplayBuffer:
         self.rew_buf = np.zeros(size, dtype=np.float32)
         self.done_buf = np.zeros(size, dtype=np.float32)
         self.ptr, self.size, self.max_size = 0, 0, size
+        self.data_aug = data_aug
         self.p_var = p_var
         self.threshold = env.threshold
 
@@ -39,15 +40,16 @@ class ReplayBuffer:
         obs=self.obs_buf[idxs]
         obs2=self.obs2_buf[idxs]
         rew=self.rew_buf[idxs]
-        for i in range(batch_size):
-            if obs2[i, -1] > self.threshold:
-                rew[i] += self.env.get_add_cost(np.random.randint(0, self.p_var, 1))
-            else:
-                low = -1*min(min(obs[i, -1], obs2[i, -1]), self.p_var)
-                high = min((self.threshold - max(obs[i, -1], obs2[i, -1])), self.p_var)
-                p = np.random.randint(low, high, 1)
-                obs2[i, -1] += p
-                obs[i, -1] += p
+        if self.data_aug:
+            for i in range(batch_size):
+                if obs2[i, -1] > self.threshold:
+                    rew[i] += self.env.get_add_cost(np.random.randint(0, self.p_var, 1))
+                else:
+                    low = -1*min(min(obs[i, -1], obs2[i, -1]), self.p_var)
+                    high = min((self.threshold - max(obs[i, -1], obs2[i, -1])), self.p_var)
+                    p = np.random.randint(low, high, 1)
+                    obs2[i, -1] += p
+                    obs[i, -1] += p
 
         batch = dict(obs=obs,
                      obs2=obs2,
@@ -62,7 +64,7 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         steps_per_epoch=4000, epochs=100, replay_size=int(1e6), gamma=0.99,
         polyak=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100, start_steps=10000,
         update_after=1000, update_every=50, act_noise=0.1, target_noise=0.2,
-        noise_clip=0.5, policy_delay=2, num_test_episodes=10, max_ep_len=1000,
+        noise_clip=0.5, policy_delay=2, num_test_episodes=10, max_ep_len=1000, data_aug=False
         logger_kwargs=dict(), save_freq=1):
     """
     Twin Delayed Deep Deterministic Policy Gradient (TD3)
@@ -195,7 +197,7 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
     q_params = itertools.chain(ac.q1.parameters(), ac.q2.parameters())
 
     # Experience buffer
-    replay_buffer = ReplayBuffer(env=env, obs_dim=obs_dim, act_dim=act_dim, size=replay_size)
+    replay_buffer = ReplayBuffer(env=env, obs_dim=obs_dim, act_dim=act_dim, size=replay_size, data_aug=data_aug)
 
     # Count variables (protip: try to get a feel for how different size networks behave!)
     var_counts = tuple(core.count_vars(module) for module in [ac.pi, ac.q1, ac.q2])
