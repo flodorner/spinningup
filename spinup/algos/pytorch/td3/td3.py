@@ -43,7 +43,7 @@ class ReplayBuffer:
             if obs2[i, -1] > self.threshold:
                 rew[i] += self.env.get_add_cost(np.random.randint(0, self.p_var, 1))
             else:
-                low = -1*min(min(obs[i, -1], obs2[i, -1]), self.p_var)+1
+                low = -1*min(min(obs[i, -1], obs2[i, -1]), self.p_var)
                 high = min((self.threshold - max(obs[i, -1], obs2[i, -1])), self.p_var)
                 p = np.random.randint(low, high, 1)
                 obs2[i, -1] += p
