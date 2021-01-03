@@ -74,8 +74,8 @@ class ReplayBuffer:
                     obs[i, -1] = total_cost + p
                     obs2[i, -1] = total_cost_2 + p
                 else:
-                    obs[i, :-buckets] = bucketize(total_cost + p ,buckets,self.threshold)
-                    obs2[i, :-buckets] = bucketize(total_cost_2 + p , buckets, self.threshold)
+                    obs[i, -buckets:] = bucketize(total_cost + p ,buckets,self.threshold)
+                    obs2[i, -buckets:] = bucketize(total_cost_2 + p , buckets, self.threshold)
 
                 if (total_cost_2 + p > self.threshold and total_cost + p <= self.threshold) and not (total_cost_2 > self.threshold and total_cost <= self.threshold):
                     # Add_penalty only gets added if threshold is broken at this step. Also, we need to check whether it already has been added!
