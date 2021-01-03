@@ -391,7 +391,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
     # Prepare for interaction with environment
     total_steps = steps_per_epoch * epochs
     start_time = time.time()
-    o, ep_ret, ep_len, cost_old = env.reset(), 0, 0, 0
+    o, ep_ret, ep_len= env.reset(), 0, 0
 
     # Main loop: collect experience in env and update/log each epoch
     for t in range(total_steps):
@@ -419,17 +419,16 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         d = False if ep_len==max_ep_len else d
 
         # Store experience to replay buffer
-        replay_buffer.store(o, a, r, o2, d, cost_old)
+        replay_buffer.store(o, a, r, o2, d, cost)
 
         # Super critical, easy to overlook step: make sure to update
         # most recent observation!
         o = o2
-        cost_old = cost
 
         # End of trajectory handling
         if d or (ep_len == max_ep_len):
             logger.store(EpRet=ep_ret, EpLen=ep_len)
-            o, ep_ret, ep_len, cost_old = env.reset(), 0, 0, 0
+            o, ep_ret, ep_len = env.reset(), 0, 0
 
         # Update handling
         if t >= update_after and t % update_every == 0:
