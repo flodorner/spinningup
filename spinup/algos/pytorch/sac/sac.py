@@ -62,7 +62,7 @@ class ReplayBuffer:
                     total_cost = obs[i, -1]
                 else:
                     total_cost = sum(obs[i, -buckets:])
-                total_cost_2 = total_cost + cost
+                total_cost_2 = min(total_cost + cost,self.threshold+1)
                 if not buckets is None:
                     assert total_cost_2 == sum(obs2[i, -buckets:])
                 #Verify that costs are synchronized correctly.
