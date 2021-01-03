@@ -35,13 +35,13 @@ class ReplayBuffer:
         self.p_var = p_var
         self.threshold = env.threshold
 
-    def store(self, obs, act, rew, next_obs, done, info):
+    def store(self, obs, act, rew, next_obs, done, cost):
         self.obs_buf[self.ptr] = obs
         self.obs2_buf[self.ptr] = next_obs
         self.act_buf[self.ptr] = act
         self.rew_buf[self.ptr] = rew
         self.done_buf[self.ptr] = done
-        self.cost_buf[self.ptr] = info["cost"]
+        self.cost_buf[self.ptr] = cost
         self.ptr = (self.ptr+1) % self.max_size
         self.size = min(self.size+1, self.max_size)
 
@@ -350,7 +350,7 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
     # Prepare for interaction with environment
     total_steps = steps_per_epoch * epochs
     start_time = time.time()
-    o, ep_ret, ep_len = env.reset(), 0, 0
+    o, ep_ret, ep_len, cost_old = env.reset(), 0, 0, 0
 
     # Main loop: collect experience in env and update/log each epoch
     for t in range(total_steps):
@@ -368,7 +368,8 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
             a = env.action_space.sample()
 
         # Step the env
-        o2, r, d, info   = env.step(a)
+        o2, r, d, info  = env.step(a)
+        cost = info["cost"]
         ep_ret += r
         ep_len += 1
 
@@ -378,16 +379,17 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         d = False if ep_len==max_ep_len else d
 
         # Store experience to replay buffer
-        replay_buffer.store(o, a, r, o2, d, info)
+        replay_buffer.store(o, a, r, o2, d, cost_old)
 
         # Super critical, easy to overlook step: make sure to update
         # most recent observation!
         o = o2
+        cost_old = cost
 
         # End of trajectory handling
         if d or (ep_len == max_ep_len):
             logger.store(EpRet=ep_ret, EpLen=ep_len)
-            o, ep_ret, ep_len = env.reset(), 0, 0
+            o, ep_ret, ep_len, cost_old = env.reset(), 0, 0, 0
 
         # Update handling
         if t >= update_after and t % update_every == 0:
