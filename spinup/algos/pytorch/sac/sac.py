@@ -63,7 +63,8 @@ class ReplayBuffer:
                 else:
                     total_cost = ((self.threshold+1)/buckets)*sum(obs[i, :-buckets])
                 total_cost_2 = total_cost + cost
-                assert total_cost_2 == ((self.threshold+1)/buckets)*sum(obs2[i, :-buckets])
+                if not buckets == None:
+                    assert total_cost_2 == ((self.threshold+1)/buckets)*sum(obs2[i, :-buckets])
                 #Verify that costs are synchronized correctly.
                 low = -1 * min(min(total_cost, total_cost_2), self.p_var)
                 high = min((self.threshold - max(total_cost, total_cost_2)), self.p_var)
