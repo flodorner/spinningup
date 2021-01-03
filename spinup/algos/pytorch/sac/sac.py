@@ -65,6 +65,11 @@ class ReplayBuffer:
             high = np.minimum((self.threshold - np.maximum(total_cost, total_cost_2)), np.zeros(total_cost.shape)+self.p_var)
             p = np.array([np.random.randint(low[i], high[i]) for i in range(len(low))])
 
+            if not np.all(np.sum(obs2[:, -buckets:],axis=-1) == total_cost_2):
+                for i in range(len(obs2[:, -buckets:])):
+                    if np.sum(obs2[i, -buckets:]) != total_cost_2[i]:
+                        print(obs[i],obs2[i],total_cost[i],total_cost_2[i],cost[i])
+
             if buckets is None:
                 obs[:, -1] = total_cost + p
                 obs2[:, -1] = total_cost_2 + p
@@ -72,10 +77,7 @@ class ReplayBuffer:
                 obs[:, -buckets:] = bucketize_vec(total_cost + p, buckets, self.threshold)
                 obs2[:, -buckets:] = bucketize_vec(total_cost_2 + p, buckets, self.threshold)
 
-            if not np.all(np.sum(obs2[:, -buckets:],axis=-1) == total_cost_2):
-                for i in range(len(obs2[:, -buckets:])):
-                    if np.sum(obs2[i, -buckets:]) != total_cost_2[i]:
-                        print(obs[i],obs2[i],total_cost[i],total_cost_2[i],cost[i])
+
 
             rew -= self.env.add_penalty*np.logical_and(np.logical_and(total_cost_2 + p > self.threshold,total_cost + p <= self.threshold)
                                                        ,np.logical_not(np.logical_and(total_cost_2 > self.threshold,total_cost <= self.threshold)))
