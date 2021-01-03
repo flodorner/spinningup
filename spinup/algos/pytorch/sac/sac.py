@@ -62,7 +62,7 @@ class ReplayBuffer:
                     total_cost = obs[i, -1]
                 else:
                     total_cost = sum(obs[i, -buckets:])
-                total_cost_2 = min(total_cost + cost,self.threshold+1)
+                total_cost_2 = min(total_cost + cost[i],self.threshold+1)
                 if not buckets is None:
                     assert total_cost_2 == sum(obs2[i, -buckets:])
                 #Verify that costs are synchronized correctly.
@@ -85,10 +85,10 @@ class ReplayBuffer:
                     rew[i] += self.env.add_penalty
                 if total_cost_2 + p > self.threshold and total_cost_2 <= self.threshold:
                     # Only add cost penalty when total costs are above threshold but had not been without augmentation
-                    rew[i] -= self.env.cost_penalty*cost
+                    rew[i] -= self.env.cost_penalty*cost[i]
                 if total_cost_2 > self.threshold and total_cost_2 + p <= self.threshold:
                     #Again, if we were above the threshold but are not anymore with the augmenation, we need to remove the cost penalty.
-                    rew[i] += self.env.cost_penalty * cost
+                    rew[i] += self.env.cost_penalty * cost[i]
 
         batch = dict(obs=obs,
                      obs2=obs2,
