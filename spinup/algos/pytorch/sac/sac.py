@@ -9,11 +9,10 @@ from spinup.utils.test_policy import load_policy_and_env
 import spinup.algos.pytorch.sac.core as core
 from spinup.utils.logx import EpochLogger
 
-def bucketize(x,n_buckets,max_x):
-    out = np.zeros(n_buckets)
+def bucketize_vec(x,n_buckets,max_x):
+    out = np.zeros((len(x),n_buckets))
     for i in range(1,n_buckets+1):
-        if x>i*max_x/n_buckets:
-            out[i-1]=1
+        out[:, i - 1] = (x>i*max_x/n_buckets).astype(np.int)
     return out
 
 
@@ -56,39 +55,38 @@ class ReplayBuffer:
         if self.data_aug:
             buckets = self.env.buckets
             assert buckets is None or buckets==self.threshold+1
-            #We want to accurately reconstruct the cost for data augmentation. Also, this assumes integer costs!
-            for i in range(batch_size):
-                if buckets is None:
-                    total_cost = obs[i, -1]
-                else:
-                    total_cost = sum(obs[i, -buckets:])
-                total_cost_2 = min(total_cost + cost[i],self.threshold+1)
-                if not buckets is None:
-                    assert total_cost_2 == sum(obs2[i, -buckets:])
-                #Verify that costs are synchronized correctly.
-                low = -1 * min(min(total_cost, total_cost_2), self.p_var)
-                high = min((self.threshold - max(total_cost, total_cost_2)), self.p_var)
-                p = np.random.randint(low, high, 1)
+            if buckets is None:
+                total_cost = obs[:, -1]
+            else:
+                total_cost = np.sum(obs[:, -buckets:],axis=-1)
+            total_cost_2 = np.minimum(total_cost + cost, self.threshold + 1)
 
-                if buckets is None:
-                    obs[i, -1] = total_cost + p
-                    obs2[i, -1] = total_cost_2 + p
-                else:
-                    obs[i, -buckets:] = bucketize(total_cost + p ,buckets,self.threshold)
-                    obs2[i, -buckets:] = bucketize(total_cost_2 + p , buckets, self.threshold)
+            low = -1 * np.minimum(np.minimum(total_cost, total_cost_2), np.zeros(total_cost.shape)+self.p_var)
+            high = np.minimum((self.threshold - np.maximum(total_cost, total_cost_2)), np.zeros(total_cost.shape)+self.p_var)
+            p = np.array([np.random.randint(low[i], high[i], 1) for i in range(len(low))])
 
-                if (total_cost_2 + p > self.threshold and total_cost + p <= self.threshold) and not (total_cost_2 > self.threshold and total_cost <= self.threshold):
-                    # Add_penalty only gets added if threshold is broken at this step. Also, we need to check whether it already has been added!
-                    rew[i] -= self.env.add_penalty
-                if (total_cost_2 > self.threshold and total_cost <= self.threshold) and not (total_cost_2 + p > self.threshold and total_cost + p <= self.threshold):
-                    #Similarly, we need to remove the penalty when the augmentation causes the threshold not to be broken at a step.
-                    rew[i] += self.env.add_penalty
-                if total_cost_2 + p > self.threshold and total_cost_2 <= self.threshold:
-                    # Only add cost penalty when total costs are above threshold but had not been without augmentation
-                    rew[i] -= self.env.cost_penalty*cost[i]
-                if total_cost_2 > self.threshold and total_cost_2 + p <= self.threshold:
-                    #Again, if we were above the threshold but are not anymore with the augmenation, we need to remove the cost penalty.
-                    rew[i] += self.env.cost_penalty * cost[i]
+            if buckets is None:
+                obs[:, -1] = total_cost + p
+                obs2[:, -1] = total_cost_2 + p
+            else:
+                obs[:, -buckets:] = bucketize_vec(total_cost + p, buckets, self.threshold)
+                obs2[:, -buckets:] = bucketize_vec(total_cost_2 + p, buckets, self.threshold)
+
+            if not np.all(np.sum(obs2[:, -buckets:],axis=-1) == total_cost_2):
+                for i in range(len(obs2[:, -buckets:])):
+                    if np.sum(obs2[i, -buckets:]) != total_cost_2[i]:
+                        print(obs[i],obs2[i],total_cost[i],total_cost_2[i],cost[i])
+
+            rew -= self.env.add_penalty*np.logical_and(np.logical_and(total_cost_2 + p > self.threshold,total_cost + p <= self.threshold)
+                                                       ,np.logical_not(np.logical_and(total_cost_2 > self.threshold,total_cost <= self.threshold)))
+                # Add_penalty only gets added if threshold is broken at this step. Also, we need to check whether it already has been added!
+            rew += self.env.add_penalty*np.logical_and(np.logical_and(total_cost_2  > self.threshold,total_cost <= self.threshold)
+                                                       ,np.logical_not(np.logical_and(total_cost_2 + p > self.threshold,total_cost + p <= self.threshold)))
+                # Similarly, we need to remove the penalty when the augmentation causes the threshold not to be broken at a step.
+            rew -= self.env.cost_penalty * cost *np.logical_and(total_cost_2 + p > self.threshold,total_cost_2 <= self.threshold)
+            # Only add cost penalty when total costs are above threshold but had not been without augmentation
+            rew += self.env.cost_penalty * cost * np.logical_and(total_cost_2  > self.threshold, total_cost_2 + p <= self.threshold)
+            # Again, if we were above the threshold but are not anymore with the augmenation, we need to remove the cost penalty.
 
         batch = dict(obs=obs,
                      obs2=obs2,
