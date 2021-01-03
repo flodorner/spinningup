@@ -49,9 +49,9 @@ class ReplayBuffer:
         #Note in case we pursue this further after the submission: Get rid of the wrapper and do everything in here!
         # This way, we can also implement adaptive penalties to get around the tuning problem.
         idxs = np.random.randint(0, self.size, size=batch_size)
-        obs=self.obs_buf[idxs]
-        obs2=self.obs2_buf[idxs]
-        rew=self.rew_buf[idxs]
+        obs=np.zeros(self.obs_buf[idxs].shape)+self.obs_buf[idxs]
+        obs2=np.zeros(self.obs2_buf[idxs].shape)+self.obs2_buf[idxs]
+        rew=np.zeros(self.rew_buf[idxs].shape)+self.rew_buf[idxs]
         cost = self.cost_buf[idxs]
         if self.data_aug:
             buckets = self.env.buckets
@@ -61,16 +61,16 @@ class ReplayBuffer:
                 if buckets is None:
                     total_cost = obs[i, -1]
                 else:
-                    total_cost = sum(obs[i,-buckets:])
+                    total_cost = sum(obs[i, -buckets:])
                 total_cost_2 = min(total_cost + cost[i],self.threshold+1)
                 if not buckets is None:
-                    assert total_cost_2 == sum(obs2[i,-buckets:])
+                    assert total_cost_2 == sum(obs2[i, -buckets:])
                 #Verify that costs are synchronized correctly.
                 low = -1 * min(min(total_cost, total_cost_2), self.p_var)
                 high = min((self.threshold - max(total_cost, total_cost_2)), self.p_var)
                 p = np.random.randint(low, high, 1)
 
-                if buckets is None: 
+                if buckets is None:
                     obs[i, -1] = total_cost + p
                     obs2[i, -1] = total_cost_2 + p
                 else:

@@ -19,7 +19,7 @@ def bucketize(x,n_buckets,max_x):
 
 class ReplayBuffer:
     """
-    A simple FIFO experience replay buffer for TD3 agents.
+    A simple FIFO experience replay buffer for SAC agents.
     """
 
     def __init__(self, env, obs_dim, act_dim, size, data_aug=False, p_var=10):
@@ -49,9 +49,9 @@ class ReplayBuffer:
         #Note in case we pursue this further after the submission: Get rid of the wrapper and do everything in here!
         # This way, we can also implement adaptive penalties to get around the tuning problem.
         idxs = np.random.randint(0, self.size, size=batch_size)
-        obs=self.obs_buf[idxs]
-        obs2=self.obs2_buf[idxs]
-        rew=self.rew_buf[idxs]
+        obs = np.zeros(self.obs_buf[idxs].shape) + self.obs_buf[idxs]
+        obs2 = np.zeros(self.obs2_buf[idxs].shape) + self.obs2_buf[idxs]
+        rew = np.zeros(self.rew_buf[idxs].shape) + self.rew_buf[idxs]
         cost = self.cost_buf[idxs]
         if self.data_aug:
             buckets = self.env.buckets
