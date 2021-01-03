@@ -55,22 +55,22 @@ class ReplayBuffer:
         cost = self.cost_buf[self.ptr]
         if self.data_aug:
             buckets = self.env.buckets
-            assert buckets == None or buckets==self.threshold+1
+            assert buckets is None or buckets==self.threshold+1
             #We want to accurately reconstruct the cost for data augmentation. Also, this assumes integer costs!
             for i in range(batch_size):
-                if buckets == None:
+                if buckets is None:
                     total_cost = obs[i, -1]
                 else:
-                    total_cost = ((self.threshold+1)/buckets)*sum(obs[i, :-buckets])
+                    total_cost = sum(obs[i,-buckets:])
                 total_cost_2 = total_cost + cost
-                if not buckets == None:
-                    assert total_cost_2 == ((self.threshold + 1) / buckets) * sum(obs2[i, :-buckets])
+                if not buckets is None:
+                    assert total_cost_2 == sum(obs2[i,-buckets:])
                 #Verify that costs are synchronized correctly.
                 low = -1 * min(min(total_cost, total_cost_2), self.p_var)
                 high = min((self.threshold - max(total_cost, total_cost_2)), self.p_var)
                 p = np.random.randint(low, high, 1)
 
-                if buckets == None:
+                if buckets is None: 
                     obs[i, -1] = total_cost + p
                     obs2[i, -1] = total_cost_2 + p
                 else:
@@ -360,7 +360,7 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         # use the learned policy (with some noise, via act_noise).
 
         if t > start_steps:
-            if collector_policy == None:
+            if collector_policy is None:
                 a = get_action(o, act_noise)
             else:
                 a = collector_policy(torch.as_tensor(o, dtype=torch.float32).to(device))

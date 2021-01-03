@@ -55,22 +55,22 @@ class ReplayBuffer:
         cost = self.cost_buf[self.ptr]
         if self.data_aug:
             buckets = self.env.buckets
-            assert buckets == None or buckets==self.threshold+1
+            assert buckets is None or buckets==self.threshold+1
             #We want to accurately reconstruct the cost for data augmentation. Also, this assumes integer costs!
             for i in range(batch_size):
-                if buckets == None:
+                if buckets is None:
                     total_cost = obs[i, -1]
                 else:
-                    total_cost = ((self.threshold+1)/buckets)*sum(obs[i, :-buckets])
+                    total_cost = sum(obs[i, -buckets:])
                 total_cost_2 = total_cost + cost
-                if not buckets == None:
-                    assert total_cost_2 == ((self.threshold+1)/buckets)*sum(obs2[i, :-buckets])
+                if not buckets is None:
+                    assert total_cost_2 == sum(obs2[i, -buckets:])
                 #Verify that costs are synchronized correctly.
                 low = -1 * min(min(total_cost, total_cost_2), self.p_var)
                 high = min((self.threshold - max(total_cost, total_cost_2)), self.p_var)
                 p = np.random.randint(low, high, 1)
 
-                if buckets == None:
+                if buckets is None:
                     obs[i, -1] = total_cost + p
                     obs2[i, -1] = total_cost_2 + p
                 else:
@@ -258,7 +258,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
 
         q1 = ac.q1(o.to(device),a.to(device))
         q2 = ac.q2(o.to(device),a.to(device))
-        if not entropy_constraint == None:
+        if not entropy_constraint is None:
             soft_alpha = soft_alpha_base.to(device)
             alpha_var = softplus(soft_alpha)
 
@@ -271,7 +271,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
             q1_pi_targ = ac_targ.q1(o2.to(device), a2.to(device))
             q2_pi_targ = ac_targ.q2(o2.to(device), a2.to(device))
             q_pi_targ = torch.min(q1_pi_targ, q2_pi_targ)
-            if not entropy_constraint == None:
+            if not entropy_constraint is None:
                 backup = r.to(device) + gamma * (1 - d.to(device)) * (q_pi_targ - alpha_var * logp_a2)
             else:
                 backup = r.to(device) + gamma * (1 - d.to(device)) * (q_pi_targ - alpha * logp_a2)
@@ -290,7 +290,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
     # Set up function for computing SAC pi loss
     def compute_loss_pi(data):
         o = data['obs']
-        if not entropy_constraint == None:
+        if not entropy_constraint is None:
             soft_alpha = soft_alpha_base.to(device)
             alpha_var = softplus(soft_alpha)
         pi, logp_pi = ac.pi(o.to(device))
@@ -299,7 +299,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         q_pi = torch.min(q1_pi, q2_pi)
 
         # Entropy-regularized policy loss
-        if not entropy_constraint == None:
+        if not entropy_constraint is None:
             loss_pi = (alpha_var * logp_pi - q_pi).mean()
         else:
             loss_pi = (alpha * logp_pi - q_pi).mean()
@@ -325,7 +325,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
     # Set up optimizers for policy and q-function
     pi_optimizer = Adam(ac.pi.parameters(), lr=lr)
     q_optimizer = Adam(q_params, lr=lr)
-    if not entropy_constraint == None:
+    if not entropy_constraint is None:
         alpha_optimizer = Adam([soft_alpha_base], lr=lr)
 
     # Set up model saving
@@ -352,7 +352,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         loss_pi.backward()
         pi_optimizer.step()
 
-        if not entropy_constraint == None:
+        if not entropy_constraint is None:
             alpha_optimizer.zero_grad()
             loss_alpha, alpha_info = compute_loss_alpha(data)
             loss_alpha.backward()
@@ -364,7 +364,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
 
         # Record things
         logger.store(LossPi=loss_pi.item(), **pi_info)
-        if not entropy_constraint == None:
+        if not entropy_constraint is None:
             logger.store(LossAlpha=loss_alpha.item(), **alpha_info)
         # Finally, update target networks by polyak averaging.
         with torch.no_grad():
@@ -400,7 +400,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         # from a uniform distribution for better exploration. Afterwards,
         # use the learned policy.
         if t > start_steps:
-            if collector_policy == None:
+            if collector_policy is None:
                 a = get_action(o)
             else:
                 a = collector_policy(torch.as_tensor(o, dtype=torch.float32).to(device))
@@ -460,7 +460,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
             logger.log_tabular('LossQ', average_only=True)
 
             logger.log_tabular('Time', time.time()-start_time)
-            if not entropy_constraint == None:
+            if not entropy_constraint is None:
                 logger.log_tabular('Alpha', average_only=True)
                 logger.log_tabular('LossAlpha', average_only=True)
             logger.dump_tabular()
