@@ -9,6 +9,14 @@ import spinup.algos.pytorch.td3.core as core
 from spinup.utils.logx import EpochLogger
 from spinup.utils.test_policy import load_policy_and_env
 
+def bucketize(x,n_buckets,max_x):
+    out = np.zeros(n_buckets)
+    for i in range(1,n_buckets+1):
+        if x>i*max_x/n_buckets:
+            out[i-1]=1
+    return out
+
+
 class ReplayBuffer:
     """
     A simple FIFO experience replay buffer for TD3 agents.
@@ -21,35 +29,65 @@ class ReplayBuffer:
         self.act_buf = np.zeros(core.combined_shape(size, act_dim), dtype=np.float32)
         self.rew_buf = np.zeros(size, dtype=np.float32)
         self.done_buf = np.zeros(size, dtype=np.float32)
+        self.cost_buf = np.zeros(size, dtype=np.float32)
         self.ptr, self.size, self.max_size = 0, 0, size
         self.data_aug = data_aug
         self.p_var = p_var
         self.threshold = env.threshold
 
-    def store(self, obs, act, rew, next_obs, done):
+    def store(self, obs, act, rew, next_obs, done, info):
         self.obs_buf[self.ptr] = obs
         self.obs2_buf[self.ptr] = next_obs
         self.act_buf[self.ptr] = act
         self.rew_buf[self.ptr] = rew
         self.done_buf[self.ptr] = done
+        self.cost_buf[self.ptr] = info["cost"]
         self.ptr = (self.ptr+1) % self.max_size
         self.size = min(self.size+1, self.max_size)
 
     def sample_batch(self, batch_size=32):
+        #Note in case we pursue this further after the submission: Get rid of the wrapper and do everything in here!
+        # This way, we can also implement adaptive penalties to get around the tuning problem.
         idxs = np.random.randint(0, self.size, size=batch_size)
         obs=self.obs_buf[idxs]
         obs2=self.obs2_buf[idxs]
         rew=self.rew_buf[idxs]
+        cost = self.cost_buf[self.ptr]
         if self.data_aug:
+            buckets = self.env.buckets
+            assert buckets == None or buckets==self.threshold+1
+            #We want to accurately reconstruct the cost for data augmentation. Also, this assumes integer costs!
             for i in range(batch_size):
-                if obs2[i, -1] > self.threshold:
-                    rew[i] += self.env.get_add_cost(np.random.randint(0, self.p_var, 1))
+                if buckets == None:
+                    total_cost = obs[i, -1]
                 else:
-                    low = -1*min(min(obs[i, -1], obs2[i, -1]), self.p_var)
-                    high = min((self.threshold - max(obs[i, -1], obs2[i, -1])), self.p_var)
-                    p = np.random.randint(low, high, 1)
-                    obs2[i, -1] += p
-                    obs[i, -1] += p
+                    total_cost = ((self.threshold+1)/buckets)*sum(obs[i, :-buckets])
+                total_cost_2 = total_cost + cost
+                assert total_cost_2 == ((self.threshold+1)/buckets)*sum(obs2[i, :-buckets])
+                #Verify that costs are synchronized correctly.
+                low = -1 * min(min(total_cost, total_cost_2), self.p_var)
+                high = min((self.threshold - max(total_cost, total_cost_2)), self.p_var)
+                p = np.random.randint(low, high, 1)
+
+                if buckets == None:
+                    obs[i, -1] = total_cost + p
+                    obs2[i, -1] = total_cost_2 + p
+                else:
+                    obs[i, :-buckets] = bucketize(total_cost + p ,buckets,self.threshold)
+                    obs2[i, :-buckets] = bucketize(total_cost_2 + p , buckets, self.threshold)
+
+                if (total_cost_2 + p > self.threshold and total_cost + p <= self.threshold) and not (total_cost_2 > self.threshold and total_cost <= self.threshold):
+                    # Add_penalty only gets added if threshold is broken at this step. Also, we need to check whether it already has been added!
+                    rew[i] -= self.env.add_penalty
+                if (total_cost_2 > self.threshold and total_cost <= self.threshold) and not (total_cost_2 + p > self.threshold and total_cost + p <= self.threshold):
+                    #Similarly, we need to remove the penalty when the augmentation causes the threshold not to be broken at a step.
+                    rew[i] += self.env.add_penalty
+                if total_cost_2 + p > self.threshold and total_cost_2 <= self.threshold:
+                    # Only add cost penalty when total costs are above threshold but had not been without augmentation
+                    rew[i] -= self.env.cost_penalty*cost
+                if total_cost_2 > self.threshold and total_cost_2 + p <= self.threshold:
+                    #Again, if we were above the threshold but are not anymore with the augmenation, we need to remove the cost penalty.
+                    rew[i] += self.env.cost_penalty * cost
 
         batch = dict(obs=obs,
                      obs2=obs2,
@@ -329,7 +367,7 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
             a = env.action_space.sample()
 
         # Step the env
-        o2, r, d, _ = env.step(a)
+        o2, r, d, info = env.step(a)
         ep_ret += r
         ep_len += 1
 
@@ -339,7 +377,7 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         d = False if ep_len==max_ep_len else d
 
         # Store experience to replay buffer
-        replay_buffer.store(o, a, r, o2, d)
+        replay_buffer.store(o, a, r, o2, d, info)
 
         # Super critical, easy to overlook step: make sure to update
         # most recent observation!
