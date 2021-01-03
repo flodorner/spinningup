@@ -52,7 +52,7 @@ class ReplayBuffer:
         obs=self.obs_buf[idxs]
         obs2=self.obs2_buf[idxs]
         rew=self.rew_buf[idxs]
-        cost = self.cost_buf[self.ptr]
+        cost = self.cost_buf[idxs]
         if self.data_aug:
             buckets = self.env.buckets
             assert buckets is None or buckets==self.threshold+1
