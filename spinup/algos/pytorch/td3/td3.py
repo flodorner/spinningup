@@ -344,6 +344,7 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
                 ep_ret += r
                 ep_len += 1
             logger.store(TestEpRet=ep_ret, TestEpLen=ep_len)
+        test_env.reset()
 
     # Prepare for interaction with environment
     total_steps = steps_per_epoch * epochs

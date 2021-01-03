@@ -65,11 +65,6 @@ class ReplayBuffer:
             high = np.minimum((self.threshold - np.maximum(total_cost, total_cost_2)), np.zeros(total_cost.shape)+self.p_var)
             p = np.array([np.random.randint(low[i], high[i]) for i in range(len(low))])
 
-            if not np.all(np.sum(obs2[:, -buckets:],axis=-1) == total_cost_2):
-                for i in range(len(obs2[:, -buckets:])):
-                    if np.sum(obs2[i, -buckets:]) != total_cost_2[i]:
-                        print(obs[i],obs2[i],total_cost[i],total_cost_2[i],cost[i])
-
             if buckets is None:
                 obs[:, -1] = total_cost + p
                 obs2[:, -1] = total_cost_2 + p
@@ -387,7 +382,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
                 ep_ret += r
                 ep_len += 1
             logger.store(TestEpRet=ep_ret, TestEpLen=ep_len)
-
+        test_env.reset()
     # Prepare for interaction with environment
     total_steps = steps_per_epoch * epochs
     start_time = time.time()
