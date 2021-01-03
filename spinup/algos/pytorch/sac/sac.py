@@ -63,7 +63,7 @@ class ReplayBuffer:
 
             low = -1 * np.minimum(np.minimum(total_cost, total_cost_2), np.zeros(total_cost.shape)+self.p_var)
             high = np.minimum((self.threshold - np.maximum(total_cost, total_cost_2)), np.zeros(total_cost.shape)+self.p_var)
-            p = np.array([np.random.randint(low[i], high[i], 1) for i in range(len(low))])
+            p = np.array([np.random.randint(low[i], high[i]) for i in range(len(low))])
 
             if buckets is None:
                 obs[:, -1] = total_cost + p
