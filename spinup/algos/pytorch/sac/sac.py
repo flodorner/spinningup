@@ -66,8 +66,8 @@ class ReplayBuffer:
             p = np.array([np.random.randint(low[i], high[i]) for i in range(len(low))])
 
             if buckets is None:
-                obs[:, -1] = total_cost + p
-                obs2[:, -1] = total_cost_2 + p
+                obs[:, -1] = np.minimum(total_cost + p, self.threshold + 1)
+                obs2[:, -1] =  np.minimum(total_cost_2 + p, self.threshold + 1)
             else:
                 obs[:, -buckets:] = bucketize_vec(total_cost + p, buckets, self.threshold)
                 obs2[:, -buckets:] = bucketize_vec(total_cost_2 + p, buckets, self.threshold)
