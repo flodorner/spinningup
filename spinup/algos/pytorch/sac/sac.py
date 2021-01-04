@@ -74,16 +74,29 @@ class ReplayBuffer:
 
 
 
+            rew -= rew * np.logical_and(total_cost_2 + p > self.threshold,total_cost_2 <= self.threshold) * (1-self.env.mult_penalty)
+            #Apply reward multiplier if constraint is broken due to data augmenation
+
             rew -= self.env.add_penalty*np.logical_and(np.logical_and(total_cost_2 + p > self.threshold,total_cost + p <= self.threshold)
                                                        ,np.logical_not(np.logical_and(total_cost_2 > self.threshold,total_cost <= self.threshold)))
-                # Add_penalty only gets added if threshold is broken at this step. Also, we need to check whether it already has been added!
+            # Add_penalty only gets added if threshold is broken at this step. Also, we need to check whether it already has been added!
+
+            rew -= self.env.cost_penalty * cost * np.logical_and(total_cost_2 + p > self.threshold,
+                                                                 total_cost_2 <= self.threshold)
+            # Only add cost penalty when total costs are above threshold but had not been without augmentation
+
+
             rew += self.env.add_penalty*np.logical_and(np.logical_and(total_cost_2  > self.threshold,total_cost <= self.threshold)
                                                        ,np.logical_not(np.logical_and(total_cost_2 + p > self.threshold,total_cost + p <= self.threshold)))
-                # Similarly, we need to remove the penalty when the augmentation causes the threshold not to be broken at a step.
-            rew -= self.env.cost_penalty * cost *np.logical_and(total_cost_2 + p > self.threshold,total_cost_2 <= self.threshold)
-            # Only add cost penalty when total costs are above threshold but had not been without augmentation
+            # Similarly, we need to remove the penalty when the augmentation causes the threshold not to be broken at a step.
+
             rew += self.env.cost_penalty * cost * np.logical_and(total_cost_2  > self.threshold, total_cost_2 + p <= self.threshold)
             # Again, if we were above the threshold but are not anymore with the augmenation, we need to remove the cost penalty.
+
+            rew += np.logical_and(total_cost_2  > self.threshold, total_cost_2 + p <= self.threshold) * rew * ((1/self.env.mult_penalty)-1)
+
+            # To get the back the base-environment reward, we need to reverse the multiplicative penalty when the constraint was originally broken
+
 
         batch = dict(obs=obs,
                      obs2=obs2,
