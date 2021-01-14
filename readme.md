@@ -1,32 +1,35 @@
-**Status:** Maintenance (expect bug fixes and minor updates)
-
-Welcome to Spinning Up in Deep RL! 
+Spinning Up in Deep RL 
 ==================================
 
-This is an educational resource produced by OpenAI that makes it easier to learn about deep reinforcement learning (deep RL).
+This repository is forked from the original OpenAI [spinningup repository](https://github.com/openai/spinningup) to implement changes required for the [State Augmented Contstrained RL](https://github.com/flodorner/Augmented_Constrained_RL), as well as the more robust adaptive entropy penalty for SAC.
 
-For the unfamiliar: [reinforcement learning](https://en.wikipedia.org/wiki/Reinforcement_learning) (RL) is a machine learning approach for teaching agents how to solve tasks by trial and error. Deep RL refers to the combination of RL with [deep learning](http://ufldl.stanford.edu/tutorial/).
+SpinningUp contains a code repo of the implementation of key Reinforcement Learning algorithms including Soft Actor-Critic, Proximal Policy Optimization and Twin Delayed DDPG used in [Augmented Contstrained RL](https://github.com/flodorner/Augmented_Constrained_RL) project. Visit [spinningup.openai.com](https://spinningup.openai.com)! for more informtaion on Spinning Up
 
-This module contains a variety of helpful resources, including:
+## Installation
 
-- a short [introduction](https://spinningup.openai.com/en/latest/spinningup/rl_intro.html) to RL terminology, kinds of algorithms, and basic theory,
-- an [essay](https://spinningup.openai.com/en/latest/spinningup/spinningup.html) about how to grow into an RL research role,
-- a [curated list](https://spinningup.openai.com/en/latest/spinningup/keypapers.html) of important papers organized by topic,
-- a well-documented [code repo](https://github.com/openai/spinningup) of short, standalone implementations of key algorithms,
-- and a few [exercises](https://spinningup.openai.com/en/latest/spinningup/exercises.html) to serve as warm-ups.
-
-Get started at [spinningup.openai.com](https://spinningup.openai.com)!
-
-
-Citing Spinning Up
-------------------
-
-If you reference or use Spinning Up in your research, please cite:
-
+First Install OpenMPI:
 ```
-@article{SpinningUp2018,
-    author = {Achiam, Joshua},
-    title = {{Spinning Up in Deep Reinforcement Learning}},
-    year = {2018}
-}
+sudo apt-get update && sudo apt-get install libopenmpi-dev
 ```
+Now install the spinningup repo:
+```
+git clone https://github.com/flodorner/spinningup.git
+cd spinningup
+pip install -e .
+```
+
+## Changes
+
+The following changes were implemented in this fork:
+
+- Added GPU support for PyTorch to SAC, PPO and TD3.
+
+- Implemented adaptive entropy penalty for SAC as an alternative to the fixed entropy regularization parameter. More information about the entropy constraint can be found in this [paper](https://arxiv.org/abs/1812.05905).
+
+- Implemented data augmentation using the known cost dynamics to boost sample efficiency.
+
+- Added adaptive sampling data augmentation to prevent bias in data augmentation.
+
+
+
+
