@@ -3,7 +3,7 @@ Spinning Up in Deep RL
 
 This repository is forked from the original OpenAI [spinningup repository](https://github.com/openai/spinningup) to implement changes required for the [State Augmented Contstrained RL](https://github.com/flodorner/Augmented_Constrained_RL), as well as the more robust adaptive entropy penalty for SAC.
 
-SpinningUp contains a code repo of the implementation of key Reinforcement Learning algorithms including Soft Actor-Critic, Proximal Policy Optimization and Twin Delayed DDPG used in [Augmented Contstrained RL](https://github.com/flodorner/Augmented_Constrained_RL) project. Visit [spinningup.openai.com](https://spinningup.openai.com)! for more informtaion on Spinning Up
+SpinningUp contains a code repo of the implementation of key Reinforcement Learning algorithms including Soft Actor-Critic, Proximal Policy Optimization and Twin Delayed DDPG used in [Augmented Contstrained RL](https://github.com/flodorner/Augmented_Constrained_RL) project. Visit [spinningup.openai.com](https://spinningup.openai.com) for more information on Spinning Up.
 
 ## Installation
 
