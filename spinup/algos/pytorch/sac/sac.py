@@ -9,8 +9,11 @@ from spinup.utils.test_policy import load_policy_and_env
 import spinup.algos.pytorch.sac.core as core
 from spinup.utils.logx import EpochLogger
 
+
 def bucketize_vec(x,n_buckets,max_x):
+    # Discretize cost into n_buckets buckets
     out = np.zeros((len(x),n_buckets))
+    # All buckets below the accumulated cost are set to 1
     for i in range(1,n_buckets+1):
         out[:, i - 1] = (x>i*max_x/n_buckets).astype(np.int)
     return out
@@ -45,13 +48,14 @@ class ReplayBuffer:
         self.size = min(self.size+1, self.max_size)
 
     def sample_batch(self, batch_size=32):
-        #Note in case we pursue this further after the submission: Get rid of the wrapper and do everything in here!
+        # Note in case we pursue this further after the submission: Get rid of the wrapper and do everything in here!
         # This way, we can also implement adaptive penalties to get around the tuning problem.
         idxs = np.random.randint(0, self.size, size=batch_size)
         obs = np.zeros(self.obs_buf[idxs].shape) + self.obs_buf[idxs]
         obs2 = np.zeros(self.obs2_buf[idxs].shape) + self.obs2_buf[idxs]
         rew = np.zeros(self.rew_buf[idxs].shape) + self.rew_buf[idxs]
         cost = self.cost_buf[idxs]
+        # Implement data augmentation for the known cost dynamics
         if self.data_aug:
             buckets = self.env.buckets
             assert buckets is None or buckets==self.threshold+1
@@ -61,7 +65,7 @@ class ReplayBuffer:
                 total_cost = np.sum(obs[:, -buckets:],axis=-1)
             total_cost_2 = np.minimum(total_cost + cost, self.threshold + 1)
 
-
+            # Perturb the cost to generate new data
             p = np.random.randint(-self.p_var , self.p_var+1)
             p = np.maximum(-1 * np.minimum(total_cost, total_cost_2),p)
             p = np.minimum((self.threshold + 1 - np.maximum(total_cost, total_cost_2)),p)
