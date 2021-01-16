@@ -62,7 +62,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
         polyak=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100, start_steps=10000,
         update_after=1000, update_every=50, act_noise=0.1, target_noise=0.2,
         noise_clip=0.5, policy_delay=2, num_test_episodes=10, max_ep_len=1000,
-        logger_kwargs=dict(), save_freq=1,use_oac=False):
+        logger_kwargs=dict(), save_freq=1,shift_oac=4,beta_oac=4):
     """
     Twin Delayed Deep Deterministic Policy Gradient (TD3)
 
@@ -160,6 +160,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
             the current policy and value function.
 
     """
+    assert (shift_oac==None and beta_oac==None) or  (shift_oac!=None and beta_oac!=None)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using device:', device)
     logger = EpochLogger(**logger_kwargs)
@@ -200,7 +201,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
     # List of parameters for both Q-networks (save this for convenience)
     q_params = itertools.chain(ac.q1.parameters(), ac.q2.parameters(), cc.q1.parameters(), cc.q2.parameters())
 
-    soft_lambda_base = torch.tensor(0.0, requires_grad=True)
+    soft_lambda_base = torch.tensor(-10000, requires_grad=True)
     softplus = torch.nn.Softplus().to(device)
 
     # Experience buffer
@@ -326,8 +327,6 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
             a += noise_scale * np.random.randn(act_dim)
             return np.clip(a, -act_limit, act_limit)
         else:
-            delta = 1
-            beta = 1
             a=torch.tensor(a).to(device)
             a.requires_grad = True
             q1 = ac.q1(torch.as_tensor(o, dtype=torch.float32).to(device),a)
@@ -335,14 +334,14 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
             q_mean = 0.5*(q1+q2)
             sdq = 0.5*(torch.abs(q1-q2))
 
-            q_up = q_mean + beta*sdq
+            q_up = q_mean + beta_oac*sdq
 
             ac.q1.zero_grad()
             ac.q2.zero_grad()
             q_up.backward()
             grad_a = a.grad.data
 
-            a_new = a + grad_a*np.sqrt(2*delta)*noise_scale/torch.norm(grad_a)
+            a_new = a + grad_a*shift_oac*noise_scale/torch.norm(grad_a)
             a = a_new.detach().cpu().numpy()+noise_scale * np.random.randn(act_dim)
             return np.clip(a, -act_limit, act_limit)
 
