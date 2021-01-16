@@ -332,7 +332,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
             a.requires_grad = True
             q1 = ac.q1(torch.as_tensor(o, dtype=torch.float32).to(device),a)
             q2 = ac.q2(torch.as_tensor(o, dtype=torch.float32).to(device),a)
-            q_mean = 0.5(q1+q2)
+            q_mean = 0.5*(q1+q2)
             sdq = 0.5*(torch.abs(q1-q2))
 
             q_up = q_mean + beta*sdq
