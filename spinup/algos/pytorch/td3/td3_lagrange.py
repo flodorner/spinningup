@@ -62,7 +62,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
         polyak=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100, start_steps=10000,
         update_after=1000, update_every=50, act_noise=0.1, target_noise=0.2,
         noise_clip=0.5, policy_delay=2, num_test_episodes=10, max_ep_len=1000,
-        logger_kwargs=dict(), save_freq=1):
+        logger_kwargs=dict(), save_freq=1,use_oac=False):
     """
     Twin Delayed Deep Deterministic Policy Gradient (TD3)
 
@@ -320,10 +320,34 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
                     p_targ.data.add_((1 - polyak) * p.data)
 
 
-    def get_action(o, noise_scale):
-        a = ac.act(torch.as_tensor(o, dtype=torch.float32).to(device))
-        a += noise_scale * np.random.randn(act_dim)
-        return np.clip(a, -act_limit, act_limit)
+    def get_action(o, noise_scale,use_oac=False):
+        a = ac.act(torch.as_tensor(o, dtype=torch.float32).to(device), use_oac=use_oac)
+        if not use_oac:
+            a += noise_scale * np.random.randn(act_dim)
+            return np.clip(a, -act_limit, act_limit)
+        else:
+            delta = 1
+            beta = 1
+
+            a = a.detach()
+            a.requires_grad = True
+            q1 = ac.q1(o,a)
+            q2 = ac.q2(o,a)
+            q_mean = 0.5(q1+q2)
+            sdq = 0.5*(torch.abs(q1-q2))
+
+            q_up = q_mean + beta*sdq
+
+            q1.zero_grad()
+            q2.zero_grad()
+            q_up.backward()
+            grad_a = a.grad.data
+
+            a_new = a + grad_a*torch.sqrt(2*delta)*noise_scale/torch.linalg.norm(grad_a)
+            a = a_new.detach().cpu().numpy()+noise_scale * np.random.randn(act_dim)
+            return np.clip(a, -act_limit, act_limit)
+
+
 
     def test_agent():
         for j in range(num_test_episodes):
@@ -350,7 +374,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
         # use the learned policy (with some noise, via act_noise).
 
         if t > start_steps:
-            a = get_action(o, act_noise)
+            a = get_action(o, act_noise,use_oac=use_oac)
         else:
             a = env.action_space.sample()
 
@@ -376,7 +400,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
         # End of trajectory handling
         if d or (ep_len == max_ep_len):
             logger.store(EpRet=ep_ret, EpLen=ep_len,EpCost=ep_cost)
-            o, ep_ret, ep_len = env.reset(), 0, 0
+            o, ep_ret, ep_cost, ep_len = env.reset(), 0, 0, 0
 
         # Update handling
         if t >= update_after and t % update_every == 0:
