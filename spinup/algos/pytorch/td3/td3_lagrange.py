@@ -337,8 +337,8 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
 
             q_up = q_mean + beta*sdq
 
-            q1.zero_grad()
-            q2.zero_grad()
+            ac.q1.zero_grad()
+            ac.q2.zero_grad()
             q_up.backward()
             grad_a = a.grad.data
 
