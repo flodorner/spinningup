@@ -201,7 +201,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
     # List of parameters for both Q-networks (save this for convenience)
     q_params = itertools.chain(ac.q1.parameters(), ac.q2.parameters(), cc.q1.parameters(), cc.q2.parameters())
 
-    soft_lambda_base = torch.tensor(-10000, requires_grad=True)
+    soft_lambda_base = torch.tensor(-10000.0, requires_grad=True)
     softplus = torch.nn.Softplus().to(device)
 
     # Experience buffer
