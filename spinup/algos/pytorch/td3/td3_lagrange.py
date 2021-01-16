@@ -313,6 +313,12 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
                     # params, as opposed to "mul" and "add", which would make new tensors.
                     p_targ.data.mul_(polyak)
                     p_targ.data.add_((1 - polyak) * p.data)
+                for p, p_targ in zip(cc.parameters(), cc_targ.parameters()):
+                    # NB: We use an in-place operations "mul_", "add_" to update target
+                    # params, as opposed to "mul" and "add", which would make new tensors.
+                    p_targ.data.mul_(polyak)
+                    p_targ.data.add_((1 - polyak) * p.data)
+
 
     def get_action(o, noise_scale):
         a = ac.act(torch.as_tensor(o, dtype=torch.float32).to(device))
