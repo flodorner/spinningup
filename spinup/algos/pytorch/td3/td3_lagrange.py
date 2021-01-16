@@ -160,7 +160,8 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
             the current policy and value function.
 
     """
-    assert (shift_oac==None and beta_oac==None) or  (shift_oac!=None and beta_oac!=None)
+    assert (shift_oac==None and beta_oac==None) or (shift_oac!=None and beta_oac!=None)
+    use_oac = (shift_oac!=None and beta_oac!=None)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using device:', device)
     logger = EpochLogger(**logger_kwargs)
