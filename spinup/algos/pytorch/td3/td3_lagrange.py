@@ -321,7 +321,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
 
 
     def get_action(o, noise_scale,use_oac=False):
-        a = ac.act(torch.as_tensor(o, dtype=torch.float32).to(device), use_oac=use_oac)
+        a = ac.act(torch.as_tensor(o, dtype=torch.float32).to(device))
         if not use_oac:
             a += noise_scale * np.random.randn(act_dim)
             return np.clip(a, -act_limit, act_limit)
