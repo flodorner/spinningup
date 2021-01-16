@@ -342,7 +342,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
             q_up.backward()
             grad_a = a.grad.data
 
-            a_new = a + grad_a*np.sqrt(2*delta)*noise_scale/torch.linalg.norm(grad_a)
+            a_new = a + grad_a*np.sqrt(2*delta)*noise_scale/torch.norm(grad_a)
             a = a_new.detach().cpu().numpy()+noise_scale * np.random.randn(act_dim)
             return np.clip(a, -act_limit, act_limit)
 
