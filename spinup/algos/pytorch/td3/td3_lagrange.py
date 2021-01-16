@@ -328,7 +328,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
         else:
             delta = 1
             beta = 1
-
+            a=torch.tensor(a)
             a.requires_grad = True
             q1 = ac.q1(o,a)
             q2 = ac.q2(o,a)
