@@ -32,7 +32,6 @@ class ReplayBuffer:
         self.done_buf = np.zeros(size, dtype=np.float32)
         self.cost_buf = np.zeros(size, dtype=np.float32)
         self.ptr, self.size, self.max_size = 0, 0, size
-        self.threshold = env.threshold
 
     def store(self, obs, act, rew, next_obs, done, cost):
         self.obs_buf[self.ptr] = obs
