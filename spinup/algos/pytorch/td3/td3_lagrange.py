@@ -234,8 +234,8 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
             q2_pi_targ = ac_targ.q2(o2.to(device), a2.to(device))
             q_pi_targ = torch.min(q1_pi_targ, q2_pi_targ)
 
-            qc1_pi_targ = ac_targ.qc1(o2.to(device), a2.to(device))
-            qc2_pi_targ = ac_targ.qc2(o2.to(device), a2.to(device))
+            qc1_pi_targ = ac_targ.q1(o2.to(device), a2.to(device))
+            qc2_pi_targ = ac_targ.q2(o2.to(device), a2.to(device))
             qc_pi_targ = torch.max(qc1_pi_targ, qc2_pi_targ) #Use max as policy minimizes costs!
 
             backup = r.to(device) + gamma * (1 - d.to(device)) * q_pi_targ
