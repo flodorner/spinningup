@@ -234,8 +234,8 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
             q2_pi_targ = ac_targ.q2(o2.to(device), a2.to(device))
             q_pi_targ = torch.min(q1_pi_targ, q2_pi_targ)
 
-            qc1_pi_targ = ac_targ.q1(o2.to(device), a2.to(device))
-            qc2_pi_targ = ac_targ.q2(o2.to(device), a2.to(device))
+            qc1_pi_targ = cc_targ.q1(o2.to(device), a2.to(device))
+            qc2_pi_targ = cc_targ.q2(o2.to(device), a2.to(device))
             qc_pi_targ = torch.max(qc1_pi_targ, qc2_pi_targ) #Use max as policy minimizes costs!
 
             backup = r.to(device) + gamma * (1 - d.to(device)) * q_pi_targ
@@ -394,6 +394,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
             logger.log_tabular('EpRet', with_min_and_max=True)
             logger.log_tabular('EpCost', with_min_and_max=True)
             logger.log_tabular('TestEpRet', with_min_and_max=True)
+            logger.log_tabular('TestEpCost', with_min_and_max=True)
             logger.log_tabular('EpLen', average_only=True)
             logger.log_tabular('TestEpLen', average_only=True)
             logger.log_tabular('TotalEnvInteracts', t)
