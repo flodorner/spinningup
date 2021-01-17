@@ -202,7 +202,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
     # List of parameters for both Q-networks (save this for convenience)
     q_params = itertools.chain(ac.q1.parameters(), ac.q2.parameters(), cc.q1.parameters(), cc.q2.parameters())
 
-    soft_lambda_base = torch.tensor(-10000.0, requires_grad=True)
+    soft_lambda_base = torch.tensor(0.0, requires_grad=True)
     softplus = torch.nn.Softplus().to(device)
 
     # Experience buffer
@@ -268,11 +268,25 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
         soft_lambda = soft_lambda_base.to(device)
         lambda_var = softplus(soft_lambda)
         q1_pi = ac.q1(o.to(device), ac.pi(o.to(device)))-lambda_var*cc.q1(o.to(device), ac.pi(o.to(device)))
-        return -q1_pi.mean()
+        return -q1_pi.mean()/(1+lambda_var)
+
+    def compute_loss_lambda(data):
+        cost_limit=25
+        ep_len = 1000
+        o = data['obs']
+        soft_lambda = soft_lambda_base.to(device)
+        lambda_var = softplus(soft_lambda)
+        pi = ac_targ.pi(o.to(device))
+        qc = cc_targ.q1(o.to(device),pi)
+        qc_constraint = cost_limit/(ep_len*(1-gamma))
+        lambda_loss = lambda_var * (qc_constraint - qc)
+        lambda_info = dict(Lambda=lambda_var.detach().cpu().numpy())
+        return lambda_loss, lambda_info
 
     # Set up optimizers for policy and q-function
     pi_optimizer = Adam(ac.pi.parameters(), lr=pi_lr)
     q_optimizer = Adam(q_params, lr=q_lr)
+    lambda_optimizer = Adam([soft_lambda_base])
 
     # Set up model saving
     logger.setup_pytorch_saver(ac)
@@ -300,6 +314,13 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
             loss_pi = compute_loss_pi(data)
             loss_pi.backward()
             pi_optimizer.step()
+
+            lambda_optimizer.zero_grad()
+            loss_lambda,lambda_info=compute_loss_lambda(data)
+            loss_lambda.backward()
+            lambda_optimizer.step()
+            logger.store(**lambda_info)
+
 
             # Unfreeze Q-networks so you can optimize it at next DDPG step.
             for p in q_params:
@@ -433,6 +454,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
             logger.log_tabular('QC2Vals', with_min_and_max=True)
             logger.log_tabular('LossPi', average_only=True)
             logger.log_tabular('LossQ', average_only=True)
+            logger.log_tabular('Lambda', average_only=True)
             logger.log_tabular('Time', time.time()-start_time)
             logger.dump_tabular()
 
