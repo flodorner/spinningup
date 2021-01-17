@@ -286,7 +286,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
     # Set up optimizers for policy and q-function
     pi_optimizer = Adam(ac.pi.parameters(), lr=pi_lr)
     q_optimizer = Adam(q_params, lr=q_lr)
-    lambda_optimizer = Adam([soft_lambda_base])
+    lambda_optimizer = Adam([soft_lambda_base],lr=0.0)
 
     # Set up model saving
     logger.setup_pytorch_saver(ac)
