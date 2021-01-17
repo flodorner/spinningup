@@ -279,7 +279,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
         pi = ac_targ.pi(o.to(device))
         qc = cc_targ.q1(o.to(device),pi)
         qc_constraint = cost_limit/(ep_len*(1-gamma))
-        lambda_loss = lambda_var * (qc_constraint - qc)
+        lambda_loss = (lambda_var * (qc_constraint - qc)).mean()
         lambda_info = dict(Lambda=lambda_var.detach().cpu().numpy())
         return lambda_loss, lambda_info
 
