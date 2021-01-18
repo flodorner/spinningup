@@ -239,6 +239,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
             qc1_pi_targ = cc_targ.q1(o2.to(device), a2.to(device))
             qc2_pi_targ = cc_targ.q2(o2.to(device), a2.to(device))
             #qc_pi_targ = torch.max(qc1_pi_targ, qc2_pi_targ) #Use max as policy minimizes costs!
+            #Implement argmin over current lincomb and choosing the target accordingly?!
             qc_pi_targ = qc1_pi_targ
 
             backup = r.to(device) + gamma * (1 - d.to(device)) * q_pi_targ
@@ -352,8 +353,12 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
         else:
             a=torch.tensor(a).to(device)
             a.requires_grad = True
-            q1 = ac.q1(torch.as_tensor(o, dtype=torch.float32).to(device),a)
-            q2 = ac.q2(torch.as_tensor(o, dtype=torch.float32).to(device),a)
+            soft_lambda = soft_lambda_base.to(device)
+            lambda_var = softplus(soft_lambda)
+
+
+            q1 = ac.q1(torch.as_tensor(o, dtype=torch.float32).to(device),a)-lambda_var*cc.q1(torch.as_tensor(o, dtype=torch.float32).to(device),a)
+            q2 = ac.q2(torch.as_tensor(o, dtype=torch.float32).to(device),a)-lambda_var*cc.q2(torch.as_tensor(o, dtype=torch.float32).to(device),a)
             q_mean = 0.5*(q1+q2)
             sdq = 0.5*(torch.abs(q1-q2))
 
@@ -364,7 +369,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
             q_up.backward()
             grad_a = a.grad.data
 
-            a_new = a + grad_a*shift_oac*noise_scale/torch.norm(grad_a)
+            a_new = a + grad_a*shift_oac*noise_scale/torch.norm(grad_a)/(1+lambda_var)
             a = a_new.detach().cpu().numpy()+noise_scale * np.random.randn(act_dim)
             return np.clip(a, -act_limit, act_limit)
 
