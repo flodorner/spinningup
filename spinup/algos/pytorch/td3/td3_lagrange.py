@@ -253,6 +253,12 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
         qc1 = cc.q1(o.to(device),a.to(device))
         qc2 = cc.q2(o.to(device),a.to(device))
 
+        if discor_critic is not None:
+            dr1 = dr.q1(o.to(device),a.to(device))
+            dr2 = dr.q2(o.to(device), a.to(device))
+            dc1 = dc.q1(o.to(device),a.to(device))
+            dc2 = dc.q2(o.to(device), a.to(device))
+
         # Bellman backup for Q functions
         with torch.no_grad():
 
@@ -283,11 +289,24 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
             backup = r.to(device) + gamma * (1 - d.to(device)) * q_pi_targ
             backup_c = c.to(device) + gamma * (1 - d.to(device)) * qc_pi_targ
 
-            if discor_critic is not None:
-                nexterror_r1 = gamma * dr_targ.q1(o2.to(device), a2.to(device))
-                nexterror_r2 = gamma * dr_targ.q2(o2.to(device), a2.to(device))
-                nexterror_c1 = gamma * dc_targ.q1(o2.to(device), a2.to(device))
-                nexterror_c2 = gamma * dc_targ.q2(o2.to(device), a2.to(device))
+            backup_dr1 = torch.abs(q1 - backup) + (1 - d.to(device)) * gamma * dr_targ.q1(o2.to(device), a2.to(device))
+            backup_dr2 = torch.abs(q2 - backup) + (1 - d.to(device)) * gamma * dr_targ.q2(o2.to(device), a2.to(device))
+            backup_dc1 = torch.abs(qc1 - backup_c) + (1 - d.to(device)) * gamma * dc_targ.q1(o2.to(device),a2.to(device))
+            backup_dc2 = torch.abs(qc2 - backup_c) + (1 - d.to(device)) * gamma * dc_targ.q2(o2.to(device),a2.to(device))
+
+
+
+
+        if discor_critic is not None:
+            nexterror_r1 = gamma * dr_targ.q1(o2.to(device), a2.to(device))
+            nexterror_r2 = gamma * dr_targ.q2(o2.to(device), a2.to(device))
+            nexterror_c1 = gamma * dc_targ.q1(o2.to(device), a2.to(device))
+            nexterror_c2 = gamma * dc_targ.q2(o2.to(device), a2.to(device))
+
+            loss_dr1 = ((dr1 - backup_dr1) ** 2).mean()
+            loss_dr2 = ((dr2 - backup_dr2) ** 2).mean()
+            loss_dc1 = ((dc1 - backup_dc1) ** 2).mean()
+            loss_dc2 = ((dc2 - backup_dc2) ** 2).mean()
 
         # MSE loss against Bellman backup
         if discor_critic is not None:
@@ -308,71 +327,19 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
 
         loss_q = loss_q +loss_qc
 
+
         # Useful info for logging
         loss_info = dict(Q1Vals=q1.detach().cpu().numpy(),
                          Q2Vals=q2.detach().cpu().numpy(),
                          QC1Vals=qc1.detach().cpu().numpy(),
                          QC2Vals=qc2.detach().cpu().numpy())
-        return loss_q, loss_info
-
-    def compute_loss_discor(data):
-        o, a, r, c, o2, d = data['obs'], data['act'], data['rew'], data['cost'], data['obs2'], data['done']
-
         if discor_critic is not None:
-            dr1 = dr.q1(o.to(device),a.to(device))
-            dr2 = dr.q2(o.to(device), a.to(device))
-            dc1 = dc.q1(o.to(device),a.to(device))
-            dc2 = dc.q2(o.to(device), a.to(device))
+            loss_q = loss_q + loss_dr1 + loss_dr2 + loss_dc1 + loss_dc2
+            mean_error = 0.25 * dr1.mean() + 0.25 * dr2.mean() + 0.25 * dc1.mean() + 0.25 * dc2.mean()
+            return loss_q, loss_info, mean_error
+        else:
+            return loss_q, loss_info
 
-        with torch.no_grad():
-            q1 = ac.q1(o.to(device), a.to(device))
-            q2 = ac.q2(o.to(device), a.to(device))
-            qc1 = cc.q1(o.to(device), a.to(device))
-            qc2 = cc.q2(o.to(device), a.to(device))
-
-            soft_lambda = soft_lambda_base.to(device)
-            lambda_var = softplus(soft_lambda)
-
-            pi_targ = ac_targ.pi(o2.to(device))
-
-            # Target policy smoothing
-            epsilon = torch.randn_like(pi_targ) * target_noise
-            epsilon = torch.clamp(epsilon, -noise_clip, noise_clip)
-            a2 = pi_targ + epsilon
-            a2 = torch.clamp(a2, act_limit_low, act_limit_high)
-
-            # Target Q-values
-            q1_pi_targ = ac_targ.q1(o2.to(device), a2.to(device))
-            q2_pi_targ = ac_targ.q2(o2.to(device), a2.to(device))
-
-            qc1_pi_targ = cc_targ.q1(o2.to(device), a2.to(device))
-            qc2_pi_targ = cc_targ.q2(o2.to(device), a2.to(device))
-
-            # Minimize linear combination at current tradeoff!
-            select_q1 = q1_pi_targ - lambda_var * qc1_pi_targ < q2_pi_targ - lambda_var * qc2_pi_targ
-            select_q2 = torch.logical_not(select_q1)
-            qc_pi_targ = qc1_pi_targ * select_q1 + qc2_pi_targ * select_q2
-            q_pi_targ = q1_pi_targ * select_q1 + q2_pi_targ * select_q2
-
-            backup = r.to(device) + gamma * (1 - d.to(device)) * q_pi_targ
-            backup_c = c.to(device) + gamma * (1 - d.to(device)) * qc_pi_targ
-
-            # MSE loss against Bellman backup
-            backup_dr1 = torch.abs(q1 - backup) + (1 - d.to(device)) * gamma * dr_targ.q1(o2.to(device), a2.to(device))
-            backup_dr2 = torch.abs(q2 - backup) + (1 - d.to(device)) * gamma * dr_targ.q2(o2.to(device), a2.to(device))
-            backup_dc1 = torch.abs(qc1 - backup_c) + (1 - d.to(device)) * gamma * dc_targ.q1(o2.to(device), a2.to(device))
-            backup_dc2 = torch.abs(qc2 - backup_c) + (1 - d.to(device)) * gamma * dc_targ.q2(o2.to(device), a2.to(device))
-
-
-        loss_dr1 = ((dr1 - backup_dr1)**2).mean()
-        loss_dr2 = ((dr2 - backup_dr2) ** 2).mean()
-        loss_dc1 = ((dc1 - backup_dc1) ** 2).mean()
-        loss_dc2 = ((dc2 - backup_dc2) ** 2).mean()
-        loss_d_q = loss_dr1+loss_dr2+loss_dc1+loss_dc2
-
-        mean_error = 0.25*dr1.mean()+0.25*dr2.mean()+0.25*dc1.mean()+0.25*dc2.mean()
-
-        return loss_d_q, mean_error
 
     # Set up function for computing TD3 pi loss
     def compute_loss_pi(data):
@@ -407,13 +374,13 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
         # First run one gradient descent step for Q1 and Q2
 
         q_optimizer.zero_grad()
-        loss_q, loss_info = compute_loss_q(data)
-        loss_q.backward()
-        q_optimizer.step()
-
-        if discor_critic:
-            loss_d_q,mean_error = compute_loss_discor(data)
-            loss_d_q.backward()
+        if discor_critic is None:
+            loss_q, loss_info = compute_loss_q(data)
+            loss_q.backward()
+            q_optimizer.step()
+        else:
+            loss_q, loss_info,mean_error = compute_loss_q(data)
+            loss_q.backward()
             q_optimizer.step()
             tao.data = polyak*tao.data+(1-polyak)*mean_error
             logger.store(Tao=tao)
@@ -608,7 +575,7 @@ if __name__ == '__main__':
         gamma=args.gamma, seed=args.seed, epochs=args.epochs,
         logger_kwargs=logger_kwargs)
 
-"""import gym
+import gym
 from gym.spaces import Box
 class test_env:
     def __init__(self):
@@ -621,6 +588,6 @@ class test_env:
     def reset(self):
         return np.array([0])
 
-td3_lagrange(lambda: test_env())"""
+td3_lagrange(lambda: test_env())
 
 
