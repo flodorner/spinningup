@@ -60,9 +60,9 @@ class ReplayBuffer:
 def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCritic,ac_kwargs=dict(), seed=0,
         steps_per_epoch=4000, epochs=100, replay_size=int(1e6), gamma=0.99,
         polyak=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100, start_steps=10000,
-        update_after=1000, update_every=50, act_noise=0.1, target_noise=0.2,
+        update_after=1000, update_every=50, act_noise=0.0, target_noise=0.4,
         noise_clip=0.5, policy_delay=2, num_test_episodes=10, max_ep_len=1000,
-        logger_kwargs=dict(), save_freq=1,shift_oac=4,beta_oac=4,lambda_delay=25,n_updates=1):
+        logger_kwargs=dict(), save_freq=1,shift_oac=4,beta_oac=4,lambda_delay=25,n_updates=1,discor_critic=core.MLPCritic):
     """
     Twin Delayed Deep Deterministic Policy Gradient (TD3)
 
@@ -194,6 +194,29 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
     cc_targ.q1 = cc_targ.q1.to(device)
     cc_targ.q2 = cc_targ.q2.to(device)
 
+    if discor_critic is not None:
+        #Use additional layer as described in discor paper.
+        if "hidden_sizes" in ac_kwargs.keys():
+            ac_kwargs["hidden_sizes"] = tuple(list(ac_kwargs["hidden_sizes"])+[ac_kwargs["hidden_sizes"][-1]])
+        else:
+            ac_kwargs["hidden_sizes"] = tuple(list(ac.hidden_sizes)+[ac.hidden_sizes[-1]])
+        dr = discor_critic(env.observation_space, env.action_space, **ac_kwargs)
+        dr_targ = deepcopy(dr)
+        dr.q1 = dr.q1.to(device)
+        dr.q2 = dr.q2.to(device)
+        dr_targ.q1 = dr_targ.q1.to(device)
+        dr_targ.q2 = dr_targ.q2.to(device)
+
+        dc = discor_critic(env.observation_space, env.action_space, **ac_kwargs)
+        dc_targ = deepcopy(dr)
+        dc.q1 = dc.q1.to(device)
+        dc.q2 = dc.q2.to(device)
+        dc_targ.q1 = dc_targ.q1.to(device)
+        dc_targ.q2 = dc_targ.q2.to(device)
+
+        tao = torch.tensor(10.0)
+
+
     # Freeze target networks with respect to optimizers (only update via polyak averaging)
     for p in ac_targ.parameters():
         p.requires_grad = False
@@ -201,17 +224,25 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
         p.requires_grad = False
 
     # List of parameters for both Q-networks (save this for convenience)
-    q_params = itertools.chain(ac.q1.parameters(), ac.q2.parameters(), cc.q1.parameters(), cc.q2.parameters())
+    if discor_critic is None:
+        q_params = itertools.chain(ac.q1.parameters(), ac.q2.parameters(), cc.q1.parameters(), cc.q2.parameters())
+    else:
+        q_params = itertools.chain(ac.q1.parameters(), ac.q2.parameters(), cc.q1.parameters(), cc.q2.parameters(),
+                                   dr.q1.parameters(), dr.q2.parameters(), dc.q1.parameters(), dc.q2.parameters())
 
-    soft_lambda_base = torch.tensor(0.0, requires_grad=True)
+    soft_lambda_base = torch.tensor(-10000.0, requires_grad=True)
     softplus = torch.nn.Softplus().to(device)
 
     # Experience buffer
     replay_buffer = ReplayBuffer(env=env, obs_dim=obs_dim, act_dim=act_dim, size=replay_size)
 
     # Count variables (protip: try to get a feel for how different size networks behave!)
-    var_counts = tuple(core.count_vars(module) for module in [ac.pi, ac.q1, ac.q2,cc.q1,cc.q2])
-    logger.log('\nNumber of parameters: \t pi: %d, \t q1: %d, \t q2: %d, \t qc1: %d, \t qc2: %d\n'%var_counts)
+    if discor_critic is None:
+        var_counts = tuple(core.count_vars(module) for module in [ac.pi, ac.q1, ac.q2,cc.q1,cc.q2])
+        logger.log('\nNumber of parameters: \t pi: %d, \t q1: %d, \t q2: %d, \t qc1: %d, \t qc2: %d\n'%var_counts)
+    else:
+        var_counts = tuple(core.count_vars(module) for module in [ac.pi, ac.q1, ac.q2,cc.q1,cc.q2,dr.q1,dr.q2,dc.q1,dc.q2])
+        logger.log('\nNumber of parameters: \t pi: %d, \t q1: %d, \t q2: %d, \t qc1: %d,\t qc2: %d,\t dr1: %d,\t dr2: %d,\t dc1: %d, \t dc2: %d\n'%var_counts)
 
     # Set up function for computing TD3 Q-losses
     def compute_loss_q(data):
@@ -252,13 +283,27 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
             backup = r.to(device) + gamma * (1 - d.to(device)) * q_pi_targ
             backup_c = c.to(device) + gamma * (1 - d.to(device)) * qc_pi_targ
 
-        # MSE loss against Bellman backup
-        loss_q1 = ((q1 - backup)**2).mean()
-        loss_q2 = ((q2 - backup)**2).mean()
-        loss_q = loss_q1 + loss_q2
+            if discor_critic is not None:
+                nexterror_r1 = gamma * dr_targ.q1(o2.to(device), a2.to(device))
+                nexterror_r2 = gamma * dr_targ.q2(o2.to(device), a2.to(device))
+                nexterror_c1 = gamma * dc_targ.q1(o2.to(device), a2.to(device))
+                nexterror_c2 = gamma * dc_targ.q2(o2.to(device), a2.to(device))
 
-        loss_qc1 = ((qc1 - backup_c)**2).mean()
-        loss_qc2 = ((qc2 - backup_c)**2).mean()
+        # MSE loss against Bellman backup
+        if discor_critic is not None:
+            loss_q1 = (torch.softmax(nexterror_r1/tao,dim=0)*(q1 - backup)**2).mean()
+            loss_q2 = (torch.softmax(nexterror_r2/tao,dim=0)*(q2 - backup)**2).mean()
+
+            loss_qc1 = (torch.softmax(nexterror_c1/tao,dim=0)*(qc1 - backup_c)**2).mean()
+            loss_qc2 = (torch.softmax(nexterror_c2/tao,dim=0)*(qc2 - backup_c)**2).mean()
+        else:
+            loss_q1 = ( (q1 - backup) ** 2).mean()
+            loss_q2 = ((q2 - backup) ** 2).mean()
+
+            loss_qc1 = ((qc1 - backup_c) ** 2).mean()
+            loss_qc2 = ((qc2 - backup_c) ** 2).mean()
+
+        loss_q = loss_q1 + loss_q2
         loss_qc = loss_qc1 + loss_qc2
 
         loss_q = loss_q +loss_qc
@@ -268,8 +313,66 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
                          Q2Vals=q2.detach().cpu().numpy(),
                          QC1Vals=qc1.detach().cpu().numpy(),
                          QC2Vals=qc2.detach().cpu().numpy())
-
         return loss_q, loss_info
+
+    def compute_loss_discor(data):
+        o, a, r, c, o2, d = data['obs'], data['act'], data['rew'], data['cost'], data['obs2'], data['done']
+
+        if discor_critic is not None:
+            dr1 = dr.q1(o.to(device),a.to(device))
+            dr2 = dr.q2(o.to(device), a.to(device))
+            dc1 = dc.q1(o.to(device),a.to(device))
+            dc2 = dc.q2(o.to(device), a.to(device))
+
+        with torch.no_grad():
+            q1 = ac.q1(o.to(device), a.to(device))
+            q2 = ac.q2(o.to(device), a.to(device))
+            qc1 = cc.q1(o.to(device), a.to(device))
+            qc2 = cc.q2(o.to(device), a.to(device))
+
+            soft_lambda = soft_lambda_base.to(device)
+            lambda_var = softplus(soft_lambda)
+
+            pi_targ = ac_targ.pi(o2.to(device))
+
+            # Target policy smoothing
+            epsilon = torch.randn_like(pi_targ) * target_noise
+            epsilon = torch.clamp(epsilon, -noise_clip, noise_clip)
+            a2 = pi_targ + epsilon
+            a2 = torch.clamp(a2, act_limit_low, act_limit_high)
+
+            # Target Q-values
+            q1_pi_targ = ac_targ.q1(o2.to(device), a2.to(device))
+            q2_pi_targ = ac_targ.q2(o2.to(device), a2.to(device))
+
+            qc1_pi_targ = cc_targ.q1(o2.to(device), a2.to(device))
+            qc2_pi_targ = cc_targ.q2(o2.to(device), a2.to(device))
+
+            # Minimize linear combination at current tradeoff!
+            select_q1 = q1_pi_targ - lambda_var * qc1_pi_targ < q2_pi_targ - lambda_var * qc2_pi_targ
+            select_q2 = torch.logical_not(select_q1)
+            qc_pi_targ = qc1_pi_targ * select_q1 + qc2_pi_targ * select_q2
+            q_pi_targ = q1_pi_targ * select_q1 + q2_pi_targ * select_q2
+
+            backup = r.to(device) + gamma * (1 - d.to(device)) * q_pi_targ
+            backup_c = c.to(device) + gamma * (1 - d.to(device)) * qc_pi_targ
+
+            # MSE loss against Bellman backup
+            backup_dr1 = torch.abs(q1 - backup) + (1 - d.to(device)) * gamma * dr_targ.q1(o2.to(device), a2.to(device))
+            backup_dr2 = torch.abs(q2 - backup) + (1 - d.to(device)) * gamma * dr_targ.q2(o2.to(device), a2.to(device))
+            backup_dc1 = torch.abs(qc1 - backup_c) + (1 - d.to(device)) * gamma * dc_targ.q1(o2.to(device), a2.to(device))
+            backup_dc2 = torch.abs(qc2 - backup_c) + (1 - d.to(device)) * gamma * dc_targ.q2(o2.to(device), a2.to(device))
+
+
+        loss_dr1 = ((dr1 - backup_dr1)**2).mean()
+        loss_dr2 = ((dr2 - backup_dr2) ** 2).mean()
+        loss_dc1 = ((dc1 - backup_dc1) ** 2).mean()
+        loss_dc2 = ((dc2 - backup_dc2) ** 2).mean()
+        loss_d_q = loss_dr1+loss_dr2+loss_dc1+loss_dc2
+
+        mean_error = 0.25*dr1.mean()+0.25*dr2.mean()+0.25*dc1.mean()+0.25*dc2.mean()
+
+        return loss_d_q, mean_error
 
     # Set up function for computing TD3 pi loss
     def compute_loss_pi(data):
@@ -302,10 +405,18 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
 
     def update(data, timer):
         # First run one gradient descent step for Q1 and Q2
+
         q_optimizer.zero_grad()
         loss_q, loss_info = compute_loss_q(data)
         loss_q.backward()
         q_optimizer.step()
+
+        if discor_critic:
+            loss_d_q,mean_error = compute_loss_discor(data)
+            loss_d_q.backward()
+            q_optimizer.step()
+            tao.data = polyak*tao.data+(1-polyak)*mean_error
+            logger.store(Tao=tao)
 
         # Record things
         logger.store(LossQ=loss_q.item(), **loss_info)
@@ -471,6 +582,8 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
             logger.log_tabular('LossPi', average_only=True)
             logger.log_tabular('LossQ', average_only=True)
             logger.log_tabular('Lambda', average_only=True)
+            if discor_critic:
+                logger.log_tabular('Tao', average_only=True)
             logger.log_tabular('Time', time.time()-start_time)
             logger.dump_tabular()
 
@@ -494,8 +607,8 @@ if __name__ == '__main__':
         ac_kwargs=dict(hidden_sizes=[args.hid]*args.l),
         gamma=args.gamma, seed=args.seed, epochs=args.epochs,
         logger_kwargs=logger_kwargs)
-"""
-import gym
+
+"""import gym
 from gym.spaces import Box
 class test_env:
     def __init__(self):
@@ -508,6 +621,6 @@ class test_env:
     def reset(self):
         return np.array([0])
 
-td3_lagrange(lambda: test_env())
-"""
+td3_lagrange(lambda: test_env())"""
+
 
