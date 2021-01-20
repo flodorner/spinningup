@@ -62,7 +62,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
         polyak=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100, start_steps=10000,
         update_after=1000, update_every=50, act_noise=0.1, target_noise=0.2,
         noise_clip=0.5, policy_delay=2, num_test_episodes=10, max_ep_len=1000,
-        logger_kwargs=dict(), save_freq=1,shift_oac=4,beta_oac=4):
+        logger_kwargs=dict(), save_freq=1,shift_oac=4,beta_oac=4,lambda_delay=25,n_updates=1):
     """
     Twin Delayed Deep Deterministic Policy Gradient (TD3)
 
@@ -175,7 +175,8 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
     act_dim = env.action_space.shape[0]
 
     # Action limit for clamping: critically, assumes all dimensions share the same bound!
-    act_limit = env.action_space.high[0]
+    act_limit_high = env.action_space.high[0]
+    act_limit_low = env.action_space.low[0]
 
     # Create actor-critic module and target networks
     ac = actor_critic(env.observation_space, env.action_space, **ac_kwargs)
@@ -223,24 +224,30 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
 
         # Bellman backup for Q functions
         with torch.no_grad():
+
+            soft_lambda = soft_lambda_base.to(device)
+            lambda_var = softplus(soft_lambda)
+
             pi_targ = ac_targ.pi(o2.to(device))
 
             # Target policy smoothing
             epsilon = torch.randn_like(pi_targ) * target_noise
             epsilon = torch.clamp(epsilon, -noise_clip, noise_clip)
             a2 = pi_targ + epsilon
-            a2 = torch.clamp(a2, -act_limit, act_limit)
+            a2 = torch.clamp(a2, act_limit_low, act_limit_high)
 
             # Target Q-values
             q1_pi_targ = ac_targ.q1(o2.to(device), a2.to(device))
             q2_pi_targ = ac_targ.q2(o2.to(device), a2.to(device))
-            q_pi_targ = torch.min(q1_pi_targ, q2_pi_targ)
 
             qc1_pi_targ = cc_targ.q1(o2.to(device), a2.to(device))
             qc2_pi_targ = cc_targ.q2(o2.to(device), a2.to(device))
-            #qc_pi_targ = torch.max(qc1_pi_targ, qc2_pi_targ) #Use max as policy minimizes costs!
-            #Implement argmin over current lincomb and choosing the target accordingly?!
-            qc_pi_targ = qc1_pi_targ
+
+            #Minimize linear combination at current tradeoff!
+            select_q1 = q1_pi_targ-lambda_var*qc1_pi_targ<q2_pi_targ-lambda_var*qc2_pi_targ
+            select_q2 = torch.logical_not(select_q1)
+            qc_pi_targ = qc1_pi_targ*select_q1+qc2_pi_targ*select_q2
+            q_pi_targ = q1_pi_targ*select_q1+q2_pi_targ*select_q2
 
             backup = r.to(device) + gamma * (1 - d.to(device)) * q_pi_targ
             backup_c = c.to(device) + gamma * (1 - d.to(device)) * qc_pi_targ
@@ -317,12 +324,6 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
             loss_pi.backward()
             pi_optimizer.step()
 
-            lambda_optimizer.zero_grad()
-            loss_lambda,lambda_info=compute_loss_lambda(data)
-            loss_lambda.backward()
-            lambda_optimizer.step()
-            logger.store(**lambda_info)
-
 
             # Unfreeze Q-networks so you can optimize it at next DDPG step.
             for p in q_params:
@@ -343,19 +344,28 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
                     # params, as opposed to "mul" and "add", which would make new tensors.
                     p_targ.data.mul_(polyak)
                     p_targ.data.add_((1 - polyak) * p.data)
-
+        if timer % lambda_delay == 0:
+            for p in q_params:
+                p.requires_grad = False
+            lambda_optimizer.zero_grad()
+            loss_lambda,lambda_info=compute_loss_lambda(data)
+            loss_lambda.backward()
+            lambda_optimizer.step()
+            logger.store(**lambda_info)
+            for p in q_params:
+                p.requires_grad = True
 
     def get_action(o, noise_scale,use_oac=False):
+        #Idea: flip coin to decide whether to only improve cost or only improve reward?
         a = ac.act(torch.as_tensor(o, dtype=torch.float32).to(device))
         if not use_oac:
             a += noise_scale * np.random.randn(act_dim)
-            return np.clip(a, -act_limit, act_limit)
+            return np.clip(a, act_limit_low, act_limit_high)
         else:
             a=torch.tensor(a).to(device)
             a.requires_grad = True
             soft_lambda = soft_lambda_base.to(device)
             lambda_var = softplus(soft_lambda)
-
 
             q1 = ac.q1(torch.as_tensor(o, dtype=torch.float32).to(device),a)-lambda_var*cc.q1(torch.as_tensor(o, dtype=torch.float32).to(device),a)
             q2 = ac.q2(torch.as_tensor(o, dtype=torch.float32).to(device),a)-lambda_var*cc.q2(torch.as_tensor(o, dtype=torch.float32).to(device),a)
@@ -371,7 +381,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
 
             a_new = a + grad_a*shift_oac*noise_scale/torch.norm(grad_a)/(1+lambda_var)
             a = a_new.detach().cpu().numpy()+noise_scale * np.random.randn(act_dim)
-            return np.clip(a, -act_limit, act_limit)
+            return np.clip(a, act_limit_low, act_limit_high)
 
 
 
@@ -430,7 +440,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
 
         # Update handling
         if t >= update_after and t % update_every == 0:
-            for j in range(update_every):
+            for j in range(update_every*n_updates):
                 batch = replay_buffer.sample_batch(batch_size)
                 update(data=batch, timer=j)
 
@@ -484,3 +494,20 @@ if __name__ == '__main__':
         ac_kwargs=dict(hidden_sizes=[args.hid]*args.l),
         gamma=args.gamma, seed=args.seed, epochs=args.epochs,
         logger_kwargs=logger_kwargs)
+"""
+import gym
+from gym.spaces import Box
+class test_env:
+    def __init__(self):
+        self.observation_space = Box(low=np.array([0]), high=np.array([1]), dtype=np.float32)
+        self.action_space = Box(low=np.array([0]), high=np.array([1]), dtype=np.float32)
+        self.t=0
+    def step(self,action):
+        self.t += 1
+        return np.array([0]),action,self.t%1000==-1,{"cost":2*action}
+    def reset(self):
+        return np.array([0])
+
+td3_lagrange(lambda: test_env())
+"""
+
