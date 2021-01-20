@@ -291,11 +291,11 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
 
         # MSE loss against Bellman backup
         if discor_critic is not None:
-            loss_q1 = (torch.softmax(nexterror_r1/tao,dim=0)*(q1 - backup)**2).mean()
-            loss_q2 = (torch.softmax(nexterror_r2/tao,dim=0)*(q2 - backup)**2).mean()
+            loss_q1 = (torch.softmax(nexterror_r1/tao,dim=0)*(q1 - backup)**2).sum()
+            loss_q2 = (torch.softmax(nexterror_r2/tao,dim=0)*(q2 - backup)**2).sum()
 
-            loss_qc1 = (torch.softmax(nexterror_c1/tao,dim=0)*(qc1 - backup_c)**2).mean()
-            loss_qc2 = (torch.softmax(nexterror_c2/tao,dim=0)*(qc2 - backup_c)**2).mean()
+            loss_qc1 = (torch.softmax(nexterror_c1/tao,dim=0)*(qc1 - backup_c)**2).sum()
+            loss_qc2 = (torch.softmax(nexterror_c2/tao,dim=0)*(qc2 - backup_c)**2).sum()
         else:
             loss_q1 = ( (q1 - backup) ** 2).mean()
             loss_q2 = ((q2 - backup) ** 2).mean()
@@ -503,7 +503,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
                 # Take deterministic actions at test time (noise_scale=0)
                 o, r, d, info = test_env.step(get_action(o, 0))
                 ep_ret += r
-                ep_cost += info["cost"]
+                ep_cost += info.get("cost",0)
                 ep_len += 1
             logger.store(TestEpRet=ep_ret, TestEpLen=ep_len,TestEpCost=ep_cost)
         test_env.reset()
@@ -527,7 +527,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
 
         # Step the env
         o2, r, d, info  = env.step(a)
-        cost = info["cost"]
+        cost = info.get("cost",0)
         ep_ret += r
         ep_cost += cost
         ep_len += 1
