@@ -281,8 +281,8 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
             qc2_pi_targ = cc_targ.q2(o2.to(device), a2.to(device))
 
             #Minimize linear combination at current tradeoff!
-            select_q1 = q1_pi_targ-lambda_var*qc1_pi_targ<q2_pi_targ-lambda_var*qc2_pi_targ
-            select_q2 = torch.logical_not(select_q1)
+            select_q1 = 0*q1_pi_targ-lambda_var*qc1_pi_targ<q2_pi_targ-lambda_var*qc2_pi_targ
+            select_q2 = torch.logical_not(select_q1)*0
             qc_pi_targ = qc1_pi_targ*select_q1+qc2_pi_targ*select_q2
             q_pi_targ = q1_pi_targ*select_q1+q2_pi_targ*select_q2
 
@@ -310,11 +310,11 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
 
         # MSE loss against Bellman backup
         if discor_critic is not None:
-            loss_q1 = (torch.softmax(nexterror_r1/tao,dim=0)*(q1 - backup)**2).sum()
-            loss_q2 = (torch.softmax(nexterror_r2/tao,dim=0)*(q2 - backup)**2).sum()
+            loss_q1 = (torch.softmax(-nexterror_r1/tao,dim=0)*(q1 - backup)**2).sum()
+            loss_q2 = (torch.softmax(-nexterror_r2/tao,dim=0)*(q2 - backup)**2).sum()
 
-            loss_qc1 = (torch.softmax(nexterror_c1/tao,dim=0)*(qc1 - backup_c)**2).sum()
-            loss_qc2 = (torch.softmax(nexterror_c2/tao,dim=0)*(qc2 - backup_c)**2).sum()
+            loss_qc1 = (torch.softmax(-nexterror_c1/tao,dim=0)*(qc1 - backup_c)**2).sum()
+            loss_qc2 = (torch.softmax(-nexterror_c2/tao,dim=0)*(qc2 - backup_c)**2).sum()
         else:
             loss_q1 = ( (q1 - backup) ** 2).mean()
             loss_q2 = ((q2 - backup) ** 2).mean()
@@ -574,7 +574,7 @@ if __name__ == '__main__':
         ac_kwargs=dict(hidden_sizes=[args.hid]*args.l),
         gamma=args.gamma, seed=args.seed, epochs=args.epochs,
         logger_kwargs=logger_kwargs)
-
+"""
 import gym
 from gym.spaces import Box
 class test_env:
@@ -588,6 +588,6 @@ class test_env:
     def reset(self):
         return np.array([0])
 
-td3_lagrange(lambda: test_env())
-
+td3_lagrange(lambda: test_env(),ac_kwargs={"hidden_sizes":[10,10],"hidden_sizes_policy":[10,10]})
+"""
 
