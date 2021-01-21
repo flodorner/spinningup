@@ -334,6 +334,10 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
         if discor_critic is not None:
             loss_q = loss_q + loss_dr1 + loss_dr2 + loss_dc1 + loss_dc2
             mean_error = 0.25 * dr1.mean() + 0.25 * dr2.mean() + 0.25 * dc1.mean() + 0.25 * dc2.mean()
+            loss_info["DR1Vals"] = dr1.detach().cpu().numpy()
+            loss_info["DR2Vals"] = dr2.detach().cpu().numpy()
+            loss_info["DC1Vals"] = dc1.detach().cpu().numpy()
+            loss_info["DC2Vals"] = dc2.detach().cpu().numpy()
             return loss_q, loss_info, mean_error
         else:
             return loss_q, loss_info
@@ -548,6 +552,11 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
             logger.log_tabular('Lambda', average_only=True)
             if discor_critic:
                 logger.log_tabular('Tao', average_only=True)
+                logger.log_tabular("DR1Vals", with_min_and_max=True)
+                logger.log_tabular("DR2Vals", with_min_and_max=True)
+                logger.log_tabular("DC1Vals", with_min_and_max=True)
+                logger.log_tabular("DC2Vals", with_min_and_max=True)
+
             logger.log_tabular('Time', time.time()-start_time)
             logger.dump_tabular()
 
