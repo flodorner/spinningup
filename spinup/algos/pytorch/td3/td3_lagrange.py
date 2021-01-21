@@ -370,66 +370,65 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
 
     def update(data, timer):
         # First run one gradient descent step for Q1 and Q2
-        with torch.autograd.detect_anomaly():
-            q_optimizer.zero_grad()
-            if discor_critic is None:
-                loss_q, loss_info = compute_loss_q(data)
-                loss_q.backward()
-                q_optimizer.step()
-            else:
-                loss_q, loss_info,mean_error = compute_loss_q(data)
-                loss_q.backward()
-                q_optimizer.step()
-                tao.data = polyak*tao.data+(1-polyak)*mean_error
-                logger.store(Tao=tao)
+        q_optimizer.zero_grad()
+        if discor_critic is None:
+            loss_q, loss_info = compute_loss_q(data)
+            loss_q.backward()
+            q_optimizer.step()
+        else:
+            loss_q, loss_info,mean_error = compute_loss_q(data)
+            loss_q.backward()
+            q_optimizer.step()
+            tao.data = polyak*tao.data+(1-polyak)*mean_error
+            logger.store(Tao=tao)
+
+        # Record things
+        logger.store(LossQ=loss_q.item(), **loss_info)
+
+        # Possibly update pi and target networks
+        if timer % policy_delay == 0:
+
+            # Freeze Q-networks so you don't waste computational effort
+            # computing gradients for them during the policy learning step.
+            for p in q_params:
+                p.requires_grad = False
+
+            # Next run one gradient descent step for pi.
+            pi_optimizer.zero_grad()
+            loss_pi = compute_loss_pi(data)
+            loss_pi.backward()
+            pi_optimizer.step()
+
+
+            # Unfreeze Q-networks so you can optimize it at next DDPG step.
+            for p in q_params:
+                p.requires_grad = True
 
             # Record things
-            logger.store(LossQ=loss_q.item(), **loss_info)
+            logger.store(LossPi=loss_pi.item())
 
-            # Possibly update pi and target networks
-            if timer % policy_delay == 0:
-
-                # Freeze Q-networks so you don't waste computational effort
-                # computing gradients for them during the policy learning step.
-                for p in q_params:
-                    p.requires_grad = False
-
-                # Next run one gradient descent step for pi.
-                pi_optimizer.zero_grad()
-                loss_pi = compute_loss_pi(data)
-                loss_pi.backward()
-                pi_optimizer.step()
-
-
-                # Unfreeze Q-networks so you can optimize it at next DDPG step.
-                for p in q_params:
-                    p.requires_grad = True
-
-                # Record things
-                logger.store(LossPi=loss_pi.item())
-
-                # Finally, update target networks by polyak averaging.
-                with torch.no_grad():
-                    for p, p_targ in zip(ac.parameters(), ac_targ.parameters()):
-                        # NB: We use an in-place operations "mul_", "add_" to update target
-                        # params, as opposed to "mul" and "add", which would make new tensors.
-                        p_targ.data.mul_(polyak)
-                        p_targ.data.add_((1 - polyak) * p.data)
-                    for p, p_targ in zip(cc.parameters(), cc_targ.parameters()):
-                        # NB: We use an in-place operations "mul_", "add_" to update target
-                        # params, as opposed to "mul" and "add", which would make new tensors.
-                        p_targ.data.mul_(polyak)
-                        p_targ.data.add_((1 - polyak) * p.data)
-            if timer % lambda_delay == 0:
-                for p in q_params:
-                    p.requires_grad = False
-                lambda_optimizer.zero_grad()
-                loss_lambda,lambda_info=compute_loss_lambda(data)
-                loss_lambda.backward()
-                lambda_optimizer.step()
-                logger.store(**lambda_info)
-                for p in q_params:
-                    p.requires_grad = True
+            # Finally, update target networks by polyak averaging.
+            with torch.no_grad():
+                for p, p_targ in zip(ac.parameters(), ac_targ.parameters()):
+                    # NB: We use an in-place operations "mul_", "add_" to update target
+                    # params, as opposed to "mul" and "add", which would make new tensors.
+                    p_targ.data.mul_(polyak)
+                    p_targ.data.add_((1 - polyak) * p.data)
+                for p, p_targ in zip(cc.parameters(), cc_targ.parameters()):
+                    # NB: We use an in-place operations "mul_", "add_" to update target
+                    # params, as opposed to "mul" and "add", which would make new tensors.
+                    p_targ.data.mul_(polyak)
+                    p_targ.data.add_((1 - polyak) * p.data)
+        if timer % lambda_delay == 0:
+            for p in q_params:
+                p.requires_grad = False
+            lambda_optimizer.zero_grad()
+            loss_lambda,lambda_info=compute_loss_lambda(data)
+            loss_lambda.backward()
+            lambda_optimizer.step()
+            logger.store(**lambda_info)
+            for p in q_params:
+                p.requires_grad = True
 
     def get_action(o, noise_scale,use_oac=False):
         #Idea: flip coin to decide whether to only improve cost or only improve reward?
