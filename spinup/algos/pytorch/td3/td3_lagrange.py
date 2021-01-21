@@ -281,28 +281,26 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
             qc2_pi_targ = cc_targ.q2(o2.to(device), a2.to(device))
 
             #Minimize linear combination at current tradeoff!
-            select_q1 = 0*q1_pi_targ-lambda_var*qc1_pi_targ<q2_pi_targ-lambda_var*qc2_pi_targ
-            select_q2 = torch.logical_not(select_q1)*0
+            select_q1 = q1_pi_targ-lambda_var*qc1_pi_targ<q2_pi_targ-lambda_var*qc2_pi_targ
+            select_q2 = torch.logical_not(select_q1)
             qc_pi_targ = qc1_pi_targ*select_q1+qc2_pi_targ*select_q2
             q_pi_targ = q1_pi_targ*select_q1+q2_pi_targ*select_q2
 
             backup = r.to(device) + gamma * (1 - d.to(device)) * q_pi_targ
             backup_c = c.to(device) + gamma * (1 - d.to(device)) * qc_pi_targ
 
-            backup_dr1 = torch.abs(q1 - backup) + (1 - d.to(device)) * gamma * dr_targ.q1(o2.to(device), a2.to(device))
-            backup_dr2 = torch.abs(q2 - backup) + (1 - d.to(device)) * gamma * dr_targ.q2(o2.to(device), a2.to(device))
-            backup_dc1 = torch.abs(qc1 - backup_c) + (1 - d.to(device)) * gamma * dc_targ.q1(o2.to(device),a2.to(device))
-            backup_dc2 = torch.abs(qc2 - backup_c) + (1 - d.to(device)) * gamma * dc_targ.q2(o2.to(device),a2.to(device))
-
-
+            if discor_critic is not None:
+                nexterror_r1 = gamma * dr_targ.q1(o2.to(device), a2.to(device))
+                nexterror_r2 = gamma * dr_targ.q2(o2.to(device), a2.to(device))
+                nexterror_c1 = gamma * dc_targ.q1(o2.to(device), a2.to(device))
+                nexterror_c2 = gamma * dc_targ.q2(o2.to(device), a2.to(device))
+                backup_dr1 = torch.abs(q1 - backup) + (1 - d.to(device)) * gamma * dr_targ.q1(o2.to(device), a2.to(device))
+                backup_dr2 = torch.abs(q2 - backup) + (1 - d.to(device)) * gamma * dr_targ.q2(o2.to(device), a2.to(device))
+                backup_dc1 = torch.abs(qc1 - backup_c) + (1 - d.to(device)) * gamma * dc_targ.q1(o2.to(device),a2.to(device))
+                backup_dc2 = torch.abs(qc2 - backup_c) + (1 - d.to(device)) * gamma * dc_targ.q2(o2.to(device),a2.to(device))
 
 
         if discor_critic is not None:
-            nexterror_r1 = gamma * dr_targ.q1(o2.to(device), a2.to(device))
-            nexterror_r2 = gamma * dr_targ.q2(o2.to(device), a2.to(device))
-            nexterror_c1 = gamma * dc_targ.q1(o2.to(device), a2.to(device))
-            nexterror_c2 = gamma * dc_targ.q2(o2.to(device), a2.to(device))
-
             loss_dr1 = ((dr1 - backup_dr1) ** 2).mean()
             loss_dr2 = ((dr2 - backup_dr2) ** 2).mean()
             loss_dc1 = ((dc1 - backup_dc1) ** 2).mean()
