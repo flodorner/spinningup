@@ -330,7 +330,12 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
         loss_info = dict(Q1Vals=q1.detach().cpu().numpy(),
                          Q2Vals=q2.detach().cpu().numpy(),
                          QC1Vals=qc1.detach().cpu().numpy(),
-                         QC2Vals=qc2.detach().cpu().numpy())
+                         QC2Vals=qc2.detach().cpu().numpy(),
+                          Q1Loss = q1.detach().cpu().numpy(),
+                          Q2Loss = q2.detach().cpu().numpy(),
+                          QC1Loss = qc1.detach().cpu().numpy(),
+                          QC2Loss = qc2.detach().cpu().numpy()
+                         )
         if discor_critic is not None:
             loss_q = loss_q + loss_dr1 + loss_dr2 + loss_dc1 + loss_dc2
             mean_error = 0.25 * dr1.mean() + 0.25 * dr2.mean() + 0.25 * dc1.mean() + 0.25 * dc2.mean()
@@ -549,6 +554,10 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
             logger.log_tabular('QC2Vals', with_min_and_max=True)
             logger.log_tabular('LossPi', average_only=True)
             logger.log_tabular('LossQ', average_only=True)
+            logger.log_tabular('Q1Loss', average_only=True)
+            logger.log_tabular('Q2Loss', average_only=True)
+            logger.log_tabular('QC1Loss', average_only=True)
+            logger.log_tabular('QC2Loss', average_only=True)
             logger.log_tabular('Lambda', average_only=True)
             if discor_critic:
                 logger.log_tabular('Tao', average_only=True)
