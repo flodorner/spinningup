@@ -343,7 +343,7 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
     # Prepare for interaction with environment
     total_steps = steps_per_epoch * epochs
     start_time = time.time()
-    o, ep_ret, ep_len= env.reset(), 0, 0
+    o, ep_ret, ep_len, ep_cost= env.reset(), 0, 0, 0
 
     # Main loop: collect experience in env and update/log each epoch
     for t in range(total_steps):
@@ -365,6 +365,7 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         cost = info["cost"]
         ep_ret += r
         ep_len += 1
+        ep_cost += 1
 
         # Ignore the "done" signal if it comes from hitting the time
         # horizon (that is, when it's an artificial terminal signal
@@ -380,8 +381,8 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
 
         # End of trajectory handling
         if d or (ep_len == max_ep_len):
-            logger.store(EpRet=ep_ret, EpLen=ep_len)
-            o, ep_ret, ep_len = env.reset(), 0, 0
+            logger.store(EpRet=ep_ret, EpLen=ep_len,EpCost=ep_cost)
+            o, ep_ret, ep_len, ep_cost = env.reset(), 0, 0, 0
 
         # Update handling
         if t >= update_after and t % update_every == 0:
@@ -403,9 +404,11 @@ def td3(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
             # Log info about epoch
             logger.log_tabular('Epoch', epoch)
             logger.log_tabular('EpRet', with_min_and_max=True)
-            logger.log_tabular('TestEpRet', with_min_and_max=True)
+            logger.log_tabular('EpCost', with_min_and_max=True)
+            if num_test_episodes>0:
+                logger.log_tabular('TestEpRet', with_min_and_max=True)
+                logger.log_tabular('TestEpLen', average_only=True)
             logger.log_tabular('EpLen', average_only=True)
-            logger.log_tabular('TestEpLen', average_only=True)
             logger.log_tabular('TotalEnvInteracts', t)
             logger.log_tabular('Q1Vals', with_min_and_max=True)
             logger.log_tabular('Q2Vals', with_min_and_max=True)
