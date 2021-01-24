@@ -230,7 +230,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
         q_params = itertools.chain(ac.q1.parameters(), ac.q2.parameters(), cc.q1.parameters(), cc.q2.parameters(),
                                    dr.q1.parameters(), dr.q2.parameters(), dc.q1.parameters(), dc.q2.parameters())
 
-    soft_lambda_base = torch.tensor(-10000.0, requires_grad=True)
+    soft_lambda_base = torch.tensor(10.0, requires_grad=True)
     softplus = torch.nn.Softplus().to(device)
 
     # Experience buffer
@@ -500,9 +500,9 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
 
         # Step the env
         o2, r, d, info  = env.step(a)
-        cost = info.get("cost",0)
+        cost = info.get("unsafe",0)
         ep_ret += r
-        ep_cost += cost
+        ep_cost += info.get("cost",0)
         ep_len += 1
 
         # Ignore the "done" signal if it comes from hitting the time
