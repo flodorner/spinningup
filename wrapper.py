@@ -15,7 +15,7 @@ def bucketize(x,n_buckets,max_x):
 # Wrapper around the safety-gym env class
 class constraint_wrapper:
     def __init__(self, env,threshold=25,
-                 buckets=None):
+                 buckets=26):
         self.base_env = env # Use safety-gym environement as the base env
         self.buckets = buckets # no. of buckets for discretization
         # Adding cost dimension to observation space
@@ -61,6 +61,6 @@ class constraint_wrapper:
             self.obs_old = np.concatenate([obs, [min(self.cost_counter,self.threshold+1)]])
         else:
             self.obs_old = np.concatenate([obs,bucketize(self.cost_counter,self.buckets,self.threshold)])
-        return self.obs_old, reward, done, {"unsafe":int(self.cost_counter==self.threshold+1 and info["cost"]==1),"cost":info["cost"]}
+        return self.obs_old, reward, done, info
     def render(self, mode='human'):
         return self.base_env.render(mode,camera_id=1)
