@@ -1,5 +1,6 @@
 import safety_gym
 import gym
+from wrapper import wrapper
 from spinup import td3_lagrange_pytorch
 
 env = gym.make('Safexp-PointGoal1-v0')
