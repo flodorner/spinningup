@@ -80,7 +80,7 @@ class ReplayBuffer:
 
             rew *= (total_cost_2 + p > self.threshold)*(1 - self.env.mult_penalty)
             rew -= self.env.add_penalty * np.logical_and(total_cost_2 + p > self.threshold, total_cost + p <= self.threshold)
-            rew -= self.env.cost_penalty * cost * np.logical_and(total_cost_2 + p > self.threshold)
+            rew -= self.env.cost_penalty * cost * total_cost_2 + p > self.threshold
 
         batch = dict(obs=obs,
                      obs2=obs2,
