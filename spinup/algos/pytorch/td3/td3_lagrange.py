@@ -56,7 +56,7 @@ class ReplayBuffer:
             buckets = self.data_aug + 1
 
             # Sample initial cost level
-            p = np.random.randint(0, self.data_aug+2)
+            p = np.random.randint(0, self.data_aug+2,size=batch_size)
 
             if buckets is None:
                 obs[:, -1] = np.minimum(p, self.data_aug + 1)
