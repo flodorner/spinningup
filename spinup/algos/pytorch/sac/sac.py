@@ -44,8 +44,8 @@ class ReplayBuffer:
         self.rew_buf[self.ptr] = rew
         self.done_buf[self.ptr] = done
         self.cost_buf[self.ptr] = cost
-        self.ptr = (self.ptr+1) % self.max_size
-        self.size = min(self.size+1, self.max_size)
+        self.ptr = (self.ptr + 1) % self.max_size
+        self.size = min(self.size + 1, self.max_size)
 
     def sample_batch(self, batch_size=32):
         # Note in case we pursue this further after the submission: Get rid of the wrapper and do everything in here!
@@ -58,57 +58,37 @@ class ReplayBuffer:
         # Implement data augmentation for the known cost dynamics
         if self.data_aug:
             buckets = self.env.buckets
-            assert buckets is None or buckets==self.threshold+1
+            assert buckets is None or buckets == self.threshold + 1
             if buckets is None:
                 total_cost = obs[:, -1]
             else:
-                total_cost = np.sum(obs[:, -buckets:],axis=-1)
+                total_cost = np.sum(obs[:, -buckets:], axis=-1)
             total_cost_2 = np.minimum(total_cost + cost, self.threshold + 1)
 
             # Perturb the cost to generate new data
-            p = np.random.randint(-self.p_var , self.p_var+1)
-            p = np.maximum(-1 * np.minimum(total_cost, total_cost_2),p)
-            p = np.minimum((self.threshold + 1 - np.maximum(total_cost, total_cost_2)),p)
+            p = np.random.randint(-self.p_var, self.p_var + 1)
+            p = np.maximum(-1 * np.minimum(total_cost, total_cost_2), p)
+            p = np.minimum((self.threshold + 1 - np.maximum(total_cost, total_cost_2)), p)
 
             if buckets is None:
                 obs[:, -1] = np.minimum(total_cost + p, self.threshold + 1)
-                obs2[:, -1] =  np.minimum(total_cost_2 + p, self.threshold + 1)
+                obs2[:, -1] = np.minimum(total_cost_2 + p, self.threshold + 1)
             else:
                 obs[:, -buckets:] = bucketize_vec(total_cost + p, buckets, self.threshold)
                 obs2[:, -buckets:] = bucketize_vec(total_cost_2 + p, buckets, self.threshold)
 
+            # Rewards are fed to the buffer without augmentation!
 
-
-            rew -= rew * np.logical_and(total_cost_2 + p > self.threshold,total_cost_2 <= self.threshold) * (1-self.env.mult_penalty)
-            #Apply reward multiplier if constraint is broken due to data augmenation
-
-            rew -= self.env.add_penalty*np.logical_and(np.logical_and(total_cost_2 + p > self.threshold,total_cost + p <= self.threshold)
-                                                       ,np.logical_not(np.logical_and(total_cost_2 > self.threshold,total_cost <= self.threshold)))
-            # Add_penalty only gets added if threshold is broken at this step. Also, we need to check whether it already has been added!
-
-            rew -= self.env.cost_penalty * cost * np.logical_and(total_cost_2 + p > self.threshold,
-                                                                 total_cost_2 <= self.threshold)
-            # Only add cost penalty when total costs are above threshold but had not been without augmentation
-
-
-            rew += self.env.add_penalty*np.logical_and(np.logical_and(total_cost_2  > self.threshold,total_cost <= self.threshold)
-                                                       ,np.logical_not(np.logical_and(total_cost_2 + p > self.threshold,total_cost + p <= self.threshold)))
-            # Similarly, we need to remove the penalty when the augmentation causes the threshold not to be broken at a step.
-
-            rew += self.env.cost_penalty * cost * np.logical_and(total_cost_2  > self.threshold, total_cost_2 + p <= self.threshold)
-            # Again, if we were above the threshold but are not anymore with the augmenation, we need to remove the cost penalty.
-
-            rew += np.logical_and(total_cost_2  > self.threshold, total_cost_2 + p <= self.threshold) * rew * ((1/self.env.mult_penalty)-1)
-
-            # To get the back the base-environment reward, we need to reverse the multiplicative penalty when the constraint was originally broken
-
+            rew *= (total_cost_2 + p > self.threshold)*(1 - self.env.mult_penalty)
+            rew -= self.env.add_penalty * np.logical_and(total_cost_2 + p > self.threshold, total_cost + p <= self.threshold)
+            rew -= self.env.cost_penalty * cost * np.logical_and(total_cost_2 + p > self.threshold)
 
         batch = dict(obs=obs,
                      obs2=obs2,
                      act=self.act_buf[idxs],
                      rew=rew,
                      done=self.done_buf[idxs])
-        return {k: torch.as_tensor(v, dtype=torch.float32) for k,v in batch.items()}
+        return {k: torch.as_tensor(v, dtype=torch.float32) for k, v in batch.items()}
 
 
 
