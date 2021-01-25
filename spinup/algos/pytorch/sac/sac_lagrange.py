@@ -77,7 +77,7 @@ class ReplayBuffer:
 
 
 
-def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), cost_critic=core.MLPCritic,seed=0,
+def sac_lagrange(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), cost_critic=core.MLPCritic,seed=0,
         steps_per_epoch=4000, epochs=100, replay_size=int(1e6), gamma=0.99,
         polyak=0.995, lr=1e-3, alpha=0.2, batch_size=100, start_steps=10000,
         update_after=1000, update_every=50, num_test_episodes=0, max_ep_len=1000,n_updates=1,
