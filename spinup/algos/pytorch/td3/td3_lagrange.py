@@ -82,7 +82,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
         polyak=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100, start_steps=10000,
         update_after=1000, update_every=50, act_noise=0.1, target_noise=0.2,
         noise_clip=0.5, policy_delay=2, num_test_episodes=10, max_ep_len=1000,
-        logger_kwargs=dict(), save_freq=1,shift_oac=4,beta_oac=4,lambda_delay=25,n_updates=1,discor_critic=core.MLPCritic,data_aug=False):
+        logger_kwargs=dict(), save_freq=1,shift_oac=4,beta_oac=4,lambda_delay=25,n_updates=1,discor_critic=core.MLPCritic,data_aug=False,lambda_soft=0.0):
     """
     Twin Delayed Deep Deterministic Policy Gradient (TD3)
 
@@ -250,7 +250,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
         q_params = itertools.chain(ac.q1.parameters(), ac.q2.parameters(), cc.q1.parameters(), cc.q2.parameters(),
                                    dr.q1.parameters(), dr.q2.parameters(), dc.q1.parameters(), dc.q2.parameters())
 
-    soft_lambda_base = torch.tensor(10.0, requires_grad=True)
+    soft_lambda_base = torch.tensor(lambda_soft, requires_grad=True)
     softplus = torch.nn.Softplus().to(device)
 
     # Experience buffer
