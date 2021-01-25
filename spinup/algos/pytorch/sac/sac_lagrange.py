@@ -390,7 +390,7 @@ def sac_lagrange(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), cos
                 p_targ.data.mul_(polyak)
                 p_targ.data.add_((1 - polyak) * p.data)
         with torch.no_grad():
-            for p, p_targ in zip(ac.parameters(), cc_targ.parameters()):
+            for p, p_targ in zip(cc.parameters(), cc_targ.parameters()):
                 # NB: We use an in-place operations "mul_", "add_" to update target
                 # params, as opposed to "mul" and "add", which would make new tensors.
                 p_targ.data.mul_(polyak)
