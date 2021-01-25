@@ -23,7 +23,7 @@ class ReplayBuffer:
     A simple FIFO experience replay buffer for SAC agents.
     """
 
-    def __init__(self, env, obs_dim, act_dim, size,data_aug=False):
+    def __init__(self, env, obs_dim, act_dim, size,threshold=False,data_aug=False):
         self.env = env
         self.obs_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
         self.obs2_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
@@ -31,7 +31,7 @@ class ReplayBuffer:
         self.rew_buf = np.zeros(size, dtype=np.float32)
         self.done_buf = np.zeros(size, dtype=np.float32)
         self.cost_buf = np.zeros(size, dtype=np.float32)
-        self.data_aug=data_aug
+        self.threshold=threshold
         self.ptr, self.size, self.max_size = 0, 0, size
 
     def store(self, obs, act, rew, next_obs, done, cost):
@@ -52,20 +52,19 @@ class ReplayBuffer:
         obs2 = np.zeros(self.obs2_buf[idxs].shape) + self.obs2_buf[idxs]
         cost = self.cost_buf[idxs]
 
-        if self.data_aug:
-            buckets = self.data_aug + 1
+        if self.threshold:
+            buckets = self.threshold + 1
 
             # Sample initial cost level
-            p = np.random.randint(0, self.data_aug+2,size=batch_size)
-
-            if buckets is None:
-                obs[:, -1] = np.minimum(p, self.data_aug + 1)
-                obs2[:, -1] = np.minimum(p+cost, self.data_aug + 1)
+            if self.data_aug:
+                p = np.random.randint(0, self.threshold+2,size=batch_size)
             else:
-                obs[:, -buckets:] = bucketize_vec(p, buckets, self.data_aug)
-                obs2[:, -buckets:] = bucketize_vec(p+cost, buckets, self.data_aug)
+                p = np.sum(obs[:, -buckets:],axis=1)
 
-            cost = np.logical_and((p+cost)>self.data_aug,p<=self.data_aug)
+            obs[:, -buckets:] = bucketize_vec(p, buckets, self.threshold)
+            obs2[:, -buckets:] = bucketize_vec(p+cost, buckets, self.threshold)
+
+            cost = np.logical_and((p+cost)>self.threshold,p<=self.threshold)
 
         batch = dict(obs=obs,
                      obs2=obs2,
@@ -82,7 +81,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
         polyak=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100, start_steps=10000,
         update_after=1000, update_every=50, act_noise=0.1, target_noise=0.2,
         noise_clip=0.5, policy_delay=2, num_test_episodes=10, max_ep_len=1000,
-        logger_kwargs=dict(), save_freq=1,shift_oac=4,beta_oac=4,lambda_delay=25,n_updates=1,discor_critic=core.MLPCritic,data_aug=False,lambda_soft=0.0):
+        logger_kwargs=dict(), save_freq=1,shift_oac=4,beta_oac=4,lambda_delay=25,n_updates=1,discor_critic=core.MLPCritic,data_aug=False,threshold=False,lambda_soft=0.0):
     """
     Twin Delayed Deep Deterministic Policy Gradient (TD3)
 
@@ -254,7 +253,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
     softplus = torch.nn.Softplus().to(device)
 
     # Experience buffer
-    replay_buffer = ReplayBuffer(env=env, obs_dim=obs_dim, act_dim=act_dim, size=replay_size,data_aug=data_aug)
+    replay_buffer = ReplayBuffer(env=env, obs_dim=obs_dim, act_dim=act_dim, size=replay_size,data_aug=data_aug,threshold=threshold)
 
     # Count variables (protip: try to get a feel for how different size networks behave!)
     if discor_critic is None:
