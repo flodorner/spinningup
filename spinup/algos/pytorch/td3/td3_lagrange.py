@@ -32,6 +32,7 @@ class ReplayBuffer:
         self.done_buf = np.zeros(size, dtype=np.float32)
         self.cost_buf = np.zeros(size, dtype=np.float32)
         self.threshold=threshold
+        self.data_aug=data_aug
         self.ptr, self.size, self.max_size = 0, 0, size
 
     def store(self, obs, act, rew, next_obs, done, cost):
