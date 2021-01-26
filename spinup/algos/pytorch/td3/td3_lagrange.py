@@ -66,8 +66,6 @@ class ReplayBuffer:
             obs2[:, -buckets:] = bucketize_vec(p+cost, buckets, self.threshold)
 
             cost = np.logical_and((p+cost)>self.threshold,p<=self.threshold)
-        else:
-            cost = np.zeros(cost.shape)
 
         batch = dict(obs=obs,
                      obs2=obs2,
