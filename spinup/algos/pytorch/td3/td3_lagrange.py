@@ -298,7 +298,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
             a2 = torch.clamp(a2, act_limit_low, act_limit_high)
             if mix>0:
                 factor = torch.bernoulli(mix*torch.ones_like(a2))
-                a2 = (1-factor)*a2 + factor*a2_on
+                a2 = (1-factor)*a2 + factor*a2_on.to(device)
 
             # Target Q-values
             q1_pi_targ = ac_targ.q1(o2.to(device), a2.to(device))
