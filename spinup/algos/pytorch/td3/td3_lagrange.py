@@ -28,6 +28,7 @@ class ReplayBuffer:
         self.obs_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
         self.obs2_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
         self.act_buf = np.zeros(core.combined_shape(size, act_dim), dtype=np.float32)
+        self.act2_buf = np.zeros(core.combined_shape(size, act_dim), dtype=np.float32)
         self.rew_buf = np.zeros(size, dtype=np.float32)
         self.done_buf = np.zeros(size, dtype=np.float32)
         self.cost_buf = np.zeros(size, dtype=np.float32)
@@ -35,10 +36,11 @@ class ReplayBuffer:
         self.data_aug=data_aug
         self.ptr, self.size, self.max_size = 0, 0, size
 
-    def store(self, obs, act, rew, next_obs, done, cost):
+    def store(self, obs, act, act2, rew, next_obs, done, cost):
         self.obs_buf[self.ptr] = obs
         self.obs2_buf[self.ptr] = next_obs
         self.act_buf[self.ptr] = act
+        self.act2_buf[self.ptr] = act2
         self.rew_buf[self.ptr] = rew
         self.done_buf[self.ptr] = done
         self.cost_buf[self.ptr] = cost
@@ -70,6 +72,7 @@ class ReplayBuffer:
         batch = dict(obs=obs,
                      obs2=obs2,
                      act=self.act_buf[idxs],
+                     act2=self.act2_buf[idxs],
                      rew=self.rew_buf[idxs],
                      cost=cost,
                      done=self.done_buf[idxs])
@@ -82,7 +85,8 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
         polyak=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100, start_steps=10000,
         update_after=1000, update_every=50, act_noise=0.1, target_noise=0.2,
         noise_clip=0.5, policy_delay=2, num_test_episodes=0, max_ep_len=1000,
-        logger_kwargs=dict(), save_freq=1,shift_oac=4,beta_oac=4,lambda_delay=25,n_updates=1,discor_critic=core.MLPCritic,data_aug=False,threshold=False,lambda_soft=0.0):
+        logger_kwargs=dict(), save_freq=1,shift_oac=4,beta_oac=4,lambda_delay=25,n_updates=1,
+                 discor_critic=core.MLPCritic,data_aug=False,threshold=False,lambda_soft=0.0,mix=0.0):
     """
     Twin Delayed Deep Deterministic Policy Gradient (TD3)
 
@@ -266,7 +270,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
 
     # Set up function for computing TD3 Q-losses
     def compute_loss_q(data):
-        o, a, r, c, o2, d = data['obs'], data['act'], data['rew'], data['cost'], data['obs2'], data['done']
+        o, a, a2_on, r, c, o2, d = data['obs'], data['act'], data['act2'],data['rew'], data['cost'], data['obs2'], data['done']
 
         q1 = ac.q1(o.to(device),a.to(device))
         q2 = ac.q2(o.to(device),a.to(device))
@@ -292,6 +296,9 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
             epsilon = torch.clamp(epsilon, -noise_clip, noise_clip)
             a2 = pi_targ + epsilon
             a2 = torch.clamp(a2, act_limit_low, act_limit_high)
+            if mix>0:
+                factor = torch.bernoulli(mix*torch.ones_like(a2))
+                a2 = (1-factor)*a2 + factor*a2_on
 
             # Target Q-values
             q1_pi_targ = ac_targ.q1(o2.to(device), a2.to(device))
@@ -507,16 +514,12 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
     o, ep_ret, ep_cost, ep_len= env.reset(), 0, 0,0
 
     # Main loop: collect experience in env and update/log each epoch
+    a = env.action_space.sample()
     for t in range(total_steps):
 
         # Until start_steps have elapsed, randomly sample actions
         # from a uniform distribution for better exploration. Afterwards,
         # use the learned policy (with some noise, via act_noise).
-
-        if t > start_steps:
-            a = get_action(o, act_noise,use_oac=use_oac)
-        else:
-            a = env.action_space.sample()
 
         # Step the env
         o2, r, d, info  = env.step(a)
@@ -529,13 +532,18 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
         # horizon (that is, when it's an artificial terminal signal
         # that isn't based on the agent's state)
         d = False if ep_len==max_ep_len else d
-
+        if t > start_steps:
+            a2 = get_action(o, act_noise,use_oac=use_oac)
+        else:
+            a2 = env.action_space.sample()
         # Store experience to replay buffer
-        replay_buffer.store(o, a, r, o2, d, cost)
+        replay_buffer.store(o, a, a2, r, o2, d, cost)
+
 
         # Super critical, easy to overlook step: make sure to update
         # most recent observation!
         o = o2
+        a = a2
 
         # End of trajectory handling
         if d or (ep_len == max_ep_len):
@@ -558,6 +566,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
 
             # Test the performance of the deterministic version of the agent.
             test_agent()
+            a = env.action_space.sample()
 
             # Log info about epoch
             logger.log_tabular('Epoch', epoch)
