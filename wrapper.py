@@ -49,10 +49,9 @@ class constraint_wrapper:
         for i in range(self.stack_obs-1):
             self.obs_buffer.append(np.zeros(self.observation_space.low.shape))
         if self.buckets is None:
-            self.obs_buffer.append(np.concatenate([obs, [self.cost_counter]]))
+            return np.concatenate([np.concatenate(self.obs_buffer),[min(self.cost_counter,self.threshold+1)]])
         else:
-            self.obs_buffer.append(np.concatenate([obs, bucketize(self.cost_counter,self.buckets,self.threshold)]))
-        return np.concatenate(self.obs_buffer)
+            return np.concatenate([np.concatenate(self.obs_buffer),bucketize(self.cost_counter, self.buckets, self.threshold)])
 
     def step(self,action):
         if self.base_env.done:
@@ -63,10 +62,11 @@ class constraint_wrapper:
         self.t += 1
         # Calculate the cost adjusted reward
         # Augment observation space with accumulated cost
+        self.obs_buffer.appen(obs)
         if self.buckets is None:
-            self.obs_buffer.append(np.concatenate([obs, [min(self.cost_counter,self.threshold+1)]]))
+            return np.concatenate([np.concatenate(self.obs_buffer),[min(self.cost_counter,self.threshold+1)]]), reward, done, info
         else:
-            self.obs_buffer.append(np.concatenate([obs,bucketize(self.cost_counter,self.buckets,self.threshold)]))
-        return np.concatenate(self.obs_buffer), reward, done, info
+            return np.concatenate([np.concatenate(self.obs_buffer),bucketize(self.cost_counter, self.buckets, self.threshold)]), reward, done, info
+
     def render(self, mode='human'):
         return self.base_env.render(mode,camera_id=1)
