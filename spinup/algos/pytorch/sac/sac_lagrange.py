@@ -225,7 +225,7 @@ def sac_lagrange(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), cos
     q_params = itertools.chain(ac.q1.parameters(), ac.q2.parameters(), cc.q1.parameters(), cc.q2.parameters())
 
     #Initialize penalty
-    soft_lambda_base = torch.tensor(lambda_soft, requires_grad=True)
+    soft_lambda_base = torch.tensor(float(lambda_soft), requires_grad=True)
     softplus = torch.nn.Softplus().to(device)
     # Experience buffer
     replay_buffer = ReplayBuffer(env=env, obs_dim=obs_dim, act_dim=act_dim, size=replay_size,data_aug=data_aug,threshold=threshold)

@@ -254,7 +254,7 @@ def td3_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCr
         q_params = itertools.chain(ac.q1.parameters(), ac.q2.parameters(), cc.q1.parameters(), cc.q2.parameters(),
                                    dr.q1.parameters(), dr.q2.parameters(), dc.q1.parameters(), dc.q2.parameters())
 
-    soft_lambda_base = torch.tensor(lambda_soft, requires_grad=True)
+    soft_lambda_base = torch.tensor(float(lambda_soft), requires_grad=True)
     softplus = torch.nn.Softplus().to(device)
 
     # Experience buffer
