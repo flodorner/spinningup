@@ -62,7 +62,7 @@ class constraint_wrapper:
         self.t += 1
         # Calculate the cost adjusted reward
         # Augment observation space with accumulated cost
-        self.obs_buffer.appen(obs)
+        self.obs_buffer.append(obs)
         if self.buckets is None:
             return np.concatenate([np.concatenate(self.obs_buffer),[min(self.cost_counter,self.threshold+1)]]), reward, done, info
         else:
