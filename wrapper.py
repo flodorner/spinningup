@@ -47,7 +47,7 @@ class constraint_wrapper:
         # Return new cost-augmented observation
         self.obs_buffer.clear()
         for i in range(self.stack_obs-1):
-            self.obs_buffer.append(np.zeros(self.observation_space.low.shape))
+            self.obs_buffer.append(np.zeros(self.base_env.observation_space.low.shape))
         self.obs_buffer.append(obs)
         if self.buckets is None:
             return np.concatenate([np.concatenate(self.obs_buffer),[min(self.cost_counter,self.threshold+1)]])
