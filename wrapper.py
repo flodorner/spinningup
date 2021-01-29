@@ -2,6 +2,7 @@ from gym.spaces import Box
 import numpy as np
 import scipy.stats as stat
 import torch
+from collections import deque
 
 # Used to represent accumulated cost in the form of discrete buckets.
 def bucketize(x,n_buckets,max_x):
@@ -15,22 +16,24 @@ def bucketize(x,n_buckets,max_x):
 # Wrapper around the safety-gym env class
 class constraint_wrapper:
     def __init__(self, env,threshold=25,
-                 buckets=26):
+                 buckets=26,stack_obs=1):
         self.base_env = env # Use safety-gym environement as the base env
         self.buckets = buckets # no. of buckets for discretization
         # Adding cost dimension to observation space
         if self.buckets is None: # If scalar cost
-            low = np.concatenate([env.observation_space.low,np.array([0])])
-            high = np.concatenate([env.observation_space.high,np.array([np.inf])])
+            low = np.concatenate([np.tile(env.observation_space.low,stack_obs),np.array([0])])
+            high = np.concatenate([np.tile(env.observation_space.high,stack_obs),np.array([np.inf])])
         else: # If discretized cost
-            low = np.concatenate([env.observation_space.low,np.array([0 for i in range(self.buckets)])])
-            high = np.concatenate([env.observation_space.high,np.array([np.inf for i in range(self.buckets)])])
+            low = np.concatenate([np.tile(env.observation_space.low,stack_obs),np.array([0 for i in range(self.buckets)])])
+            high = np.concatenate([np.tile(env.observation_space.high,stack_obs),np.array([np.inf for i in range(self.buckets)])])
         self.observation_space = Box(low=low,high=high,dtype=np.float32) # Augment observation space domain with cost domain
         self.action_space = env.action_space
         self.total_rews = [] # To store total episode returns
         self.total_costs = [] # To store total episode costs
+        self.obs_buffer = deque([],stack_obs)
         self.t = -1
         self.threshold = threshold # threshold value for cost
+        self.stack_obs = stack_obs
 
     def reset(self):
         if self.t > 0:
@@ -42,11 +45,14 @@ class constraint_wrapper:
         self.cost_counter = 0
         self.reward_counter = 0
         # Return new cost-augmented observation
+        self.obs_buffer.clear()
+        for i in range(self.stack_obs)-1:
+            self.obs_buffer.append(np.zeros(self.observation_space.low.shape))
         if self.buckets is None:
-            self.obs_old = np.concatenate([obs, [self.cost_counter]])
+            self.obs_buffer.append(np.concatenate([obs, [self.cost_counter]]))
         else:
-            self.obs_old = np.concatenate([obs, bucketize(self.cost_counter,self.buckets,self.threshold)])
-        return self.obs_old
+            self.obs_buffer.append(np.concatenate([obs, bucketize(self.cost_counter,self.buckets,self.threshold)]))
+        return np.concatenate(self.obs_buffer)
 
     def step(self,action):
         if self.base_env.done:
@@ -58,9 +64,9 @@ class constraint_wrapper:
         # Calculate the cost adjusted reward
         # Augment observation space with accumulated cost
         if self.buckets is None:
-            self.obs_old = np.concatenate([obs, [min(self.cost_counter,self.threshold+1)]])
+            self.obs_buffer.append(np.concatenate([obs, [min(self.cost_counter,self.threshold+1)]]))
         else:
-            self.obs_old = np.concatenate([obs,bucketize(self.cost_counter,self.buckets,self.threshold)])
-        return self.obs_old, reward, done, info
+            self.obs_buffer.append(np.concatenate([obs,bucketize(self.cost_counter,self.buckets,self.threshold)]))
+        return np.concatenate(self.obs_buffer), reward, done, info
     def render(self, mode='human'):
         return self.base_env.render(mode,camera_id=1)
