@@ -67,6 +67,8 @@ class constraint_wrapper:
             self.obs_buffer.append(obs)
             c += info["cost"]
             r += reward
+            if done:
+                break
 
         self.reward_counter += r # Update total episode reward
         self.cost_counter += c # Update total episode cost
