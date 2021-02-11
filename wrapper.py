@@ -16,7 +16,7 @@ def bucketize(x,n_buckets,max_x):
 # Wrapper around the safety-gym env class
 class constraint_wrapper:
     def __init__(self, env,threshold=25,
-                 buckets=26,cost_only=False,stack_obs=1):
+                 buckets=26,cost_only=False,stack_obs=1,action_repeat=1):
         self.base_env = env # Use safety-gym environement as the base env
         self.buckets = buckets # no. of buckets for discretization
         # Adding cost dimension to observation space
@@ -35,6 +35,7 @@ class constraint_wrapper:
         self.threshold = threshold # threshold value for cost
         self.cost_only=cost_only
         self.stack_obs = stack_obs
+        self.action_repeat = action_repeat
 
     def reset(self):
         if self.t > 0:
@@ -58,20 +59,29 @@ class constraint_wrapper:
     def step(self,action):
         if self.base_env.done:
             self.base_env.reset()
-        obs, reward, done, info = self.base_env.step(action) # Base environment step
-        self.reward_counter += reward # Update total episode reward
-        self.cost_counter += info["cost"] # Update total episode cost
+
+        c = 0
+        r = 0
+        for i in range(self.action_repeat):
+            obs, reward, done, info = self.base_env.step(action) # Base environment step
+            self.obs_buffer.append(obs)
+            c += info["cost"]
+            r += reward
+
+        self.reward_counter += r # Update total episode reward
+        self.cost_counter += c # Update total episode cost
         self.t += 1
         # Calculate the cost adjusted reward
         # Augment observation space with accumulated cost
-        self.obs_buffer.append(obs)
         if self.cost_only:
-            reward = info["cost"]
+            r = c
             info = {"cost":0}
-        if self.buckets is None:
-            return np.concatenate([np.concatenate(self.obs_buffer),[min(self.cost_counter,self.threshold+1)]]), reward, done, info
         else:
-            return np.concatenate([np.concatenate(self.obs_buffer),bucketize(self.cost_counter, self.buckets, self.threshold)]), reward, done, info
+            info["cost"] = c
+        if self.buckets is None:
+            return np.concatenate([np.concatenate(self.obs_buffer),[min(self.cost_counter,self.threshold+1)]]), r, done, info
+        else:
+            return np.concatenate([np.concatenate(self.obs_buffer),bucketize(self.cost_counter, self.buckets, self.threshold)]), r, done, info
 
     def render(self, mode='human'):
         return self.base_env.render(mode,camera_id=1)
