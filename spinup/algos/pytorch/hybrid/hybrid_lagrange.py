@@ -319,7 +319,6 @@ def hybrid_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.ML
 
     # Main loop: collect experience in env and update/log each epoch
     for t in range(total_steps):
-        print(t)
         # Until start_steps have elapsed, randomly sample actions
         # from a uniform distribution for better exploration. Afterwards,
         # use the learned policy (with some noise, via act_noise).
