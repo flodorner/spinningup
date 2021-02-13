@@ -402,7 +402,7 @@ def hybrid_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.ML
             logger.dump_tabular()
 
 
-
+"""
 import gym
 from gym.spaces import Box
 class test_env:
@@ -416,6 +416,6 @@ class test_env:
     def reset(self):
         return np.array([0])
 
-hybrid_lagrange(lambda: test_env(),ac_kwargs={"hidden_sizes":[10,10],"hidden_sizes_policy":[10,10]},lambda_soft=-100)
+hybrid_lagrange(lambda: test_env(),ac_kwargs={"hidden_sizes":[10,10],"hidden_sizes_policy":[10,10]},lambda_soft=-100)"""
 
 
