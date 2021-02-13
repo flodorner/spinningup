@@ -319,6 +319,7 @@ def hybrid_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.ML
 
     # Main loop: collect experience in env and update/log each epoch
     for t in range(total_steps):
+        print(t)
         # Until start_steps have elapsed, randomly sample actions
         # from a uniform distribution for better exploration. Afterwards,
         # use the learned policy (with some noise, via act_noise).
@@ -339,14 +340,14 @@ def hybrid_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.ML
         d = False if ep_len==max_ep_len else d
         # Store experience to replay buffer
         replay_buffer_advantage.store(o, a, r, o2, d, cost)
-        if t>start_steps:
+        if t>=start_steps:
             replay_buffer_value.store(o, r, cost)
 
         # Super critical, easy to overlook step: make sure to update
         # most recent observation!
         o = o2
 
-        if t % v_update_every == v_update_every-1 and t>start_steps:
+        if t % v_update_every == v_update_every-1 and t>=start_steps:
             #Assumes no terminal states...
             v = ac.v(torch.as_tensor(o, dtype=torch.float32).to(device)).detach().cpu().numpy()
             vc = cc.v(torch.as_tensor(o, dtype=torch.float32).to(device)).detach().cpu().numpy()
@@ -360,7 +361,7 @@ def hybrid_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.ML
             o, ep_ret, ep_cost, ep_len = env.reset(), 0, 0, 0
 
         # Update handling
-        if t >= update_after and t % update_every == 0 and t>start_steps:
+        if t >= update_after and t % update_every == 0 and t>=start_steps:
             for j in range(update_every*n_updates):
                 batch = replay_buffer_advantage.sample_batch(batch_size)
                 update(data=batch, timer=j)
@@ -387,7 +388,7 @@ def hybrid_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.ML
                 logger.log_tabular('TestEpCost', with_min_and_max=True)
                 logger.log_tabular('TestEpLen', average_only=True)
             logger.log_tabular('TotalEnvInteracts', t)
-            if t>start_steps:
+            if t>=start_steps:
                 logger.log_tabular('ADVals', with_min_and_max=True)
                 logger.log_tabular('ADCVals', with_min_and_max=True)
                 logger.log_tabular('VVals', with_min_and_max=True)
@@ -402,7 +403,7 @@ def hybrid_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.ML
             logger.dump_tabular()
 
 
-"""
+
 import gym
 from gym.spaces import Box
 class test_env:
@@ -416,6 +417,6 @@ class test_env:
     def reset(self):
         return np.array([0])
 
-hybrid_lagrange(lambda: test_env(),ac_kwargs={"hidden_sizes":[10,10],"hidden_sizes_policy":[10,10]},lambda_soft=-100)"""
+hybrid_lagrange(lambda: test_env(),ac_kwargs={"hidden_sizes":[10,10],"hidden_sizes_policy":[10,10]},lambda_soft=-100)
 
 
