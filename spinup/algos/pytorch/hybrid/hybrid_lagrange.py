@@ -355,7 +355,6 @@ def hybrid_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.ML
 
         # End of trajectory handling
         if d or (ep_len == max_ep_len):
-            #update value function
             logger.store(EpRet=ep_ret, EpLen=ep_len,EpCost=ep_cost)
             o, ep_ret, ep_cost, ep_len = env.reset(), 0, 0, 0
 
@@ -368,8 +367,6 @@ def hybrid_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.ML
         # End of epoch handling
         if (t+1) % steps_per_epoch == 0:
             epoch = (t+1) // steps_per_epoch
-            if t<start_steps:
-                logger.store(ADVals=0, ADCVals=0, VVals=0,VCVals=0,LossPi=0,ADLoss=0,ADCLoss=0,VLoss=0,VCLoss=0,Lambda=0)
             # Save model
             if (epoch % save_freq == 0) or (epoch == epochs):
                 logger.save_state({'env': env}, None)
@@ -378,17 +375,17 @@ def hybrid_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.ML
             test_agent()
             a = env.action_space.sample()
 
-            # Log info about epoch
-            logger.log_tabular('Epoch', epoch)
-            logger.log_tabular('EpRet', with_min_and_max=True)
-            logger.log_tabular('EpCost', with_min_and_max=True)
-            logger.log_tabular('EpLen', average_only=True)
-            if num_test_episodes>0:
-                logger.log_tabular('TestEpRet', with_min_and_max=True)
-                logger.log_tabular('TestEpCost', with_min_and_max=True)
-                logger.log_tabular('TestEpLen', average_only=True)
-            logger.log_tabular('TotalEnvInteracts', t)
-            if t>=start_steps:
+            if t>start_steps:
+                # Log info about epoch
+                logger.log_tabular('Epoch', epoch)
+                logger.log_tabular('EpRet', with_min_and_max=True)
+                logger.log_tabular('EpCost', with_min_and_max=True)
+                logger.log_tabular('EpLen', average_only=True)
+                if num_test_episodes>0:
+                    logger.log_tabular('TestEpRet', with_min_and_max=True)
+                    logger.log_tabular('TestEpCost', with_min_and_max=True)
+                    logger.log_tabular('TestEpLen', average_only=True)
+                logger.log_tabular('TotalEnvInteracts', t)
                 logger.log_tabular('ADVals', with_min_and_max=True)
                 logger.log_tabular('ADCVals', with_min_and_max=True)
                 logger.log_tabular('VVals', with_min_and_max=True)
@@ -399,8 +396,8 @@ def hybrid_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.ML
                 logger.log_tabular('VLoss', average_only=True)
                 logger.log_tabular('VCLoss', average_only=True)
                 logger.log_tabular('Lambda', average_only=True)
-            logger.log_tabular('Time', time.time()-start_time)
-            logger.dump_tabular()
+                logger.log_tabular('Time', time.time()-start_time)
+                logger.dump_tabular()
 
 
 """
