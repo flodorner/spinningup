@@ -368,7 +368,8 @@ def hybrid_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.ML
         # End of epoch handling
         if (t+1) % steps_per_epoch == 0:
             epoch = (t+1) // steps_per_epoch
-
+            if t<start_steps:
+                logger.store(ADVals=0, ADCVals=0, VVals=0,VCVals=0,LossPi=0,ADLoss=0,ADCLoss=0,VLoss=0,VCLoss=0,Lambda=0)
             # Save model
             if (epoch % save_freq == 0) or (epoch == epochs):
                 logger.save_state({'env': env}, None)
