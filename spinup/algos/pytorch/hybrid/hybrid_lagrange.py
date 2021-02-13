@@ -290,7 +290,7 @@ def hybrid_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.ML
         return None
 
 
-    def get_action(o, noise_scale,use_oac=False):
+    def get_action(o, noise_scale):
         #Idea: flip coin to decide whether to only improve cost or only improve reward?
         a = ac.act(torch.as_tensor(o, dtype=torch.float32).to(device))
         a += noise_scale * np.random.randn(act_dim)
@@ -320,7 +320,7 @@ def hybrid_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.ML
         # Until start_steps have elapsed, randomly sample actions
         # from a uniform distribution for better exploration. Afterwards,
         # use the learned policy (with some noise, via act_noise).
-        a = get_action(o, act_noise, use_oac=use_oac)
+        a = get_action(o, act_noise)
         # Step the env
         o2, r, d, info  = env.step(a)
         cost = info.get("cost",0)
