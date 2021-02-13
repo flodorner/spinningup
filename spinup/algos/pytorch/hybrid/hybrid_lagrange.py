@@ -121,12 +121,14 @@ class ReplayBuffer:
 
 def hybrid_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.MLPCritic,ac_kwargs=dict(), seed=0,
         steps_per_epoch=10000, epochs=100, replay_size=int(1e6), gamma=0.99,
-        lr=1e-3,batch_size=100,
+        lr=1e-3,batch_size=100,start_steps=10000,
         update_after=1000, update_every=50,v_update_every=1000, act_noise=0.1,
         num_test_episodes=0, max_ep_len=1000,
         logger_kwargs=dict(), save_freq=1,lambda_delay=25,n_updates=1,train_v_iters=20,
         lambda_soft=0.0):
 
+    #Can I get faster/better V-estimates? Options:  mix in off-policy data (Laser/Vtrace)?
+    #Use dedicated exploration episodes that don't feed directly into V? (And disable the normal action noise?)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using device:', device)
@@ -320,7 +322,10 @@ def hybrid_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.ML
         # Until start_steps have elapsed, randomly sample actions
         # from a uniform distribution for better exploration. Afterwards,
         # use the learned policy (with some noise, via act_noise).
-        a = get_action(o, act_noise)
+        if t>start_steps:
+            a = get_action(o, act_noise)
+        else:
+            a = env.action_space.sample()
         # Step the env
         o2, r, d, info  = env.step(a)
         cost = info.get("cost",0)
@@ -334,13 +339,14 @@ def hybrid_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.ML
         d = False if ep_len==max_ep_len else d
         # Store experience to replay buffer
         replay_buffer_advantage.store(o, a, r, o2, d, cost)
-        replay_buffer_value.store(o, r, cost)
+        if t>start_steps:
+            replay_buffer_value.store(o, r, cost)
 
         # Super critical, easy to overlook step: make sure to update
         # most recent observation!
         o = o2
 
-        if t % v_update_every == v_update_every-1:
+        if t % v_update_every == v_update_every-1 and t>start_steps:
             #Assumes no terminal states...
             v = ac.v(torch.as_tensor(o, dtype=torch.float32).to(device)).detach().cpu().numpy()
             vc = cc.v(torch.as_tensor(o, dtype=torch.float32).to(device)).detach().cpu().numpy()
@@ -354,7 +360,7 @@ def hybrid_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.ML
             o, ep_ret, ep_cost, ep_len = env.reset(), 0, 0, 0
 
         # Update handling
-        if t >= update_after and t % update_every == 0:
+        if t >= update_after and t % update_every == 0 and t>start_steps:
             for j in range(update_every*n_updates):
                 batch = replay_buffer_advantage.sample_batch(batch_size)
                 update(data=batch, timer=j)
