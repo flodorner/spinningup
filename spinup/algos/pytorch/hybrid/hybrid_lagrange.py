@@ -397,7 +397,7 @@ def hybrid_lagrange(env_fn, actor_critic=core.MLPActorCritic,cost_critic=core.ML
                 logger.log_tabular('ADCLoss', average_only=True)
                 logger.log_tabular('VLoss', average_only=True)
                 logger.log_tabular('VCLoss', average_only=True)
-            logger.log_tabular('Lambda', average_only=True)
+                logger.log_tabular('Lambda', average_only=True)
             logger.log_tabular('Time', time.time()-start_time)
             logger.dump_tabular()
 
