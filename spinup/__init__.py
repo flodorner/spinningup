@@ -17,6 +17,7 @@ from spinup.algos.pytorch.sac.sac import sac as sac_pytorch
 from spinup.algos.pytorch.td3.td3 import td3 as td3_pytorch
 from spinup.algos.pytorch.td3.td3_lagrange import td3_lagrange as td3_lagrange_pytorch
 from spinup.algos.pytorch.sac.sac_lagrange import sac_lagrange as sac_lagrange_pytorch
+from spinup.algos.pytorch.hybrid.hybrid_lagrange import hybrid_lagrange as hybrid_lagrange_pytorch
 from spinup.algos.pytorch.trpo.trpo import trpo as trpo_pytorch
 from spinup.algos.pytorch.vpg.vpg import vpg as vpg_pytorch
 
