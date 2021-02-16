@@ -75,7 +75,7 @@ class SquashedGaussianMLPActor(nn.Module):
         if with_logprob:
             if closed_form_entropy:
                 #Diagonal gaussian => entropy is sum of individual entropies
-                logp_pi = -pi_distribution.entropy().sum(axis=-1)
+                logp_pi = pi_distribution.entropy().sum(axis=-1)
             else:
                 # Compute logprob from Gaussian, and then apply correction for Tanh squashing.
                 # NOTE: The correction formula is a little bit magic. To get an understanding
