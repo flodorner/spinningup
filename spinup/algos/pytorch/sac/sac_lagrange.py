@@ -317,9 +317,9 @@ def sac_lagrange(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), cos
 
         # Entropy-regularized policy loss
         if not entropy_constraint is None:
-            loss_pi = (alpha_var * logp_pi - q_pi).mean()
+            loss_pi = (alpha_var * logp_pi - q_pi).mean()/(1+lambda_var)
         else:
-            loss_pi = (alpha * logp_pi - q_pi).mean()
+            loss_pi = (alpha * logp_pi - q_pi).mean()/(1+lambda_var)
 
 
 
