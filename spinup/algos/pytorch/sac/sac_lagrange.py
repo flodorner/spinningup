@@ -80,7 +80,7 @@ class ReplayBuffer:
 
 def sac_lagrange(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), cost_critic=core.MLPCritic,seed=0,
         steps_per_epoch=4000, epochs=100, replay_size=int(1e6), gamma=0.99,
-        polyak=0.995, lr=1e-3, alpha=None, batch_size=100, start_steps=10000,
+        polyak=0.995, pi_lr=1e-3, q_lr=1e-3, alpha=None, batch_size=100, start_steps=10000,
         update_after=1000, update_every=50, num_test_episodes=0, max_ep_len=1000,n_updates=1,
         logger_kwargs=dict(), save_freq=1,entropy_constraint=-1,data_aug=False,threshold=False,lambda_soft=0.0):
 
@@ -340,10 +340,10 @@ def sac_lagrange(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), cos
 
 
     # Set up optimizers for policy and q-function
-    pi_optimizer = Adam(ac.pi.parameters(), lr=lr)
-    q_optimizer = Adam(q_params, lr=lr)
+    pi_optimizer = Adam(ac.pi.parameters(), lr=pi_lr)
+    q_optimizer = Adam(q_params, lr=q_lr)
     if not entropy_constraint is None:
-        alpha_optimizer = Adam([soft_alpha_base], lr=lr)
+        alpha_optimizer = Adam([soft_alpha_base], lr=q_lr)
 
     # Set up model saving
     logger.setup_pytorch_saver(ac)
