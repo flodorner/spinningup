@@ -79,7 +79,7 @@ class ReplayBuffer:
 
 
 def sac_lagrange(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), cost_critic=core.MLPCritic,seed=0,
-        steps_per_epoch=4000, epochs=100, replay_size=int(1e6), gamma=0.99,
+        steps_per_epoch=4000, epochs=100, replay_size=int(1e6), gamma=0.99, closed_form_entropy=False,
         polyak=0.995, pi_lr=1e-3, q_lr=1e-3, alpha=None, batch_size=100, start_steps=10000,
         update_after=1000, update_every=50, num_test_episodes=0, max_ep_len=1000,n_updates=1,
         logger_kwargs=dict(), save_freq=1,entropy_constraint=-1,data_aug=False,threshold=False,lambda_soft=0.0):
@@ -257,8 +257,7 @@ def sac_lagrange(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), cos
             lambda_var = softplus(soft_lambda)
 
             # Target actions come from *current* policy
-            a2, logp_a2 = ac.pi(o2.to(device))
-
+            a2, logp_a2 = ac.pi(o2.to(device),closed_form_entropy=closed_form_entropy)
             # Target Q-values
             q1_pi_targ = ac_targ.q1(o2.to(device), a2.to(device))
             q2_pi_targ = ac_targ.q2(o2.to(device), a2.to(device))
@@ -305,7 +304,7 @@ def sac_lagrange(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), cos
         if not entropy_constraint is None:
             soft_alpha = soft_alpha_base.to(device)
             alpha_var = softplus(soft_alpha)
-        pi, logp_pi = ac.pi(o.to(device))
+        pi, logp_pi = ac.pi(o.to(device),closed_form_entropy=closed_form_entropy)
 
         q1_pi = ac.q1(o.to(device), pi)
         q2_pi = ac.q2(o.to(device), pi)
@@ -332,7 +331,7 @@ def sac_lagrange(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), cos
         soft_alpha = soft_alpha_base.to(device)
         alpha = softplus(soft_alpha)
         o = data['obs']
-        pi, logp_pi = ac.pi(o.to(device))
+        pi, logp_pi = ac.pi(o.to(device),closed_form_entropy=closed_form_entropy)
         pi_entropy = -logp_pi.mean()
         loss_alpha = -alpha*(entropy_constraint*act_dim-pi_entropy)
         alpha_info = dict(Alpha=alpha.detach().cpu().numpy())

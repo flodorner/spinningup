@@ -55,7 +55,7 @@ class SquashedGaussianMLPActor(nn.Module):
         self.log_std_layer = nn.Linear(hidden_sizes[-1], act_dim)
         self.act_limit = act_limit
 
-    def forward(self, obs, deterministic=False, with_logprob=True):
+    def forward(self, obs, deterministic=False, with_logprob=True,closed_form_entropy=False):
         #Unclear if this is solved optimally. Maybe define a two-headed mlp instead (such that mu and log_std depend
         # on the last index?!)
         net_out = self.net(obs)
@@ -73,13 +73,17 @@ class SquashedGaussianMLPActor(nn.Module):
             pi_action = pi_distribution.rsample()
 
         if with_logprob:
-            # Compute logprob from Gaussian, and then apply correction for Tanh squashing.
-            # NOTE: The correction formula is a little bit magic. To get an understanding 
-            # of where it comes from, check out the original SAC paper (arXiv 1801.01290) 
-            # and look in appendix C. This is a more numerically-stable equivalent to Eq 21.
-            # Try deriving it yourself as a (very difficult) exercise. :)
-            logp_pi = pi_distribution.log_prob(pi_action).sum(axis=-1)
-            logp_pi -= (2*(np.log(2) - pi_action - F.softplus(-2*pi_action))).sum(axis=1)
+            if closed_form_entropy:
+                #Diagonal gaussian => entropy is sum of individual entropies
+                logp_pi = -pi_distribution.entropy().sum(axis=-1)
+            else:
+                # Compute logprob from Gaussian, and then apply correction for Tanh squashing.
+                # NOTE: The correction formula is a little bit magic. To get an understanding
+                # of where it comes from, check out the original SAC paper (arXiv 1801.01290)
+                # and look in appendix C. This is a more numerically-stable equivalent to Eq 21.
+                # Try deriving it yourself as a (very difficult) exercise. :)
+                logp_pi = pi_distribution.log_prob(pi_action).sum(axis=-1)
+                logp_pi -= (2*(np.log(2) - pi_action - F.softplus(-2*pi_action))).sum(axis=1)
         else:
             logp_pi = None
 
