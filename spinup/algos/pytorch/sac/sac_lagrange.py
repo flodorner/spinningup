@@ -185,6 +185,7 @@ def sac_lagrange(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), cos
     assert alpha==None or entropy_constraint==None
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cpu")
     print('Using device:', device)
     logger = EpochLogger(**logger_kwargs)
     logger.save_config(locals())
@@ -514,3 +515,19 @@ if __name__ == '__main__':
         ac_kwargs=dict(hidden_sizes=[args.hid]*args.l),
         gamma=args.gamma, seed=args.seed, epochs=args.epochs,
         logger_kwargs=logger_kwargs)
+
+"""
+import gym
+from gym.spaces import Box
+class test_env:
+    def __init__(self):
+        self.observation_space = Box(low=np.array([0]), high=np.array([1]), dtype=np.float32)
+        self.action_space = Box(low=np.array([-1]), high=np.array([1]), dtype=np.float32)
+        self.t=0
+    def step(self,action):
+        self.t += 1
+        return np.array([0]),action,self.t%1000==-1,{"cost":2*action}
+    def reset(self):
+        return np.array([0])
+
+sac_lagrange(lambda: test_env(),ac_kwargs={"hidden_sizes":[10,10],"hidden_sizes_policy":[10,10]},steps_per_epoch=1001)"""

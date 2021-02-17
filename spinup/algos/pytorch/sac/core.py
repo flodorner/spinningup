@@ -19,22 +19,6 @@ def mlp(sizes, activation, output_activation=nn.Identity):
         layers += [nn.Linear(sizes[j], sizes[j+1]), act()]
     return nn.Sequential(*layers)
 
-class split_model(nn.Module):
-    def __init__(self,sizes, activation, output_activation=nn.Identity,split_index=-1):
-        super(split_model, self).__init__()
-        self.mlp1 = mlp(sizes, activation, output_activation)
-        self.mlp2 = mlp(sizes, activation, output_activation)
-        self.split_index = split_index
-    def forward(self, x):
-        if len(list(x.size()))==1:
-            x = x.unsqueeze(0)
-        split = torch.eq(x[:,self.split_index],1).unsqueeze(1)
-        x = split.float()*self.mlp1(x)+torch.logical_not(split).float()*self.mlp2(x)
-        return x
-
-def mlp_switch(sizes, activation, output_activation=nn.Identity,split_index=-1):
-    return split_model(sizes, activation, output_activation,split_index=split_index)
-
 
 def count_vars(module):
     return sum([np.prod(p.shape) for p in module.parameters()])
@@ -45,12 +29,9 @@ LOG_STD_MIN = -20
 
 class SquashedGaussianMLPActor(nn.Module):
 
-    def __init__(self, obs_dim, act_dim, hidden_sizes, activation, act_limit,use_split=False):
+    def __init__(self, obs_dim, act_dim, hidden_sizes, activation, act_limit):
         super().__init__()
-        if not use_split:
-            self.net = mlp([obs_dim] + list(hidden_sizes), activation, activation)
-        else:
-            self.net = mlp_switch([obs_dim] + list(hidden_sizes), activation, activation)
+        self.net = mlp([obs_dim] + list(hidden_sizes), activation, activation)
         self.mu_layer = nn.Linear(hidden_sizes[-1], act_dim)
         self.log_std_layer = nn.Linear(hidden_sizes[-1], act_dim)
         self.act_limit = act_limit
@@ -75,7 +56,8 @@ class SquashedGaussianMLPActor(nn.Module):
         if with_logprob:
             if closed_form_entropy:
                 #Diagonal gaussian => entropy is sum of individual entropies
-                logp_pi = pi_distribution.entropy().sum(axis=-1)
+                logp_pi = -pi_distribution.entropy().sum(axis=-1)-(2*(np.log(2) - pi_action - F.softplus(-2*pi_action))).sum(axis=1)
+                #print(std)
             else:
                 # Compute logprob from Gaussian, and then apply correction for Tanh squashing.
                 # NOTE: The correction formula is a little bit magic. To get an understanding
@@ -95,12 +77,10 @@ class SquashedGaussianMLPActor(nn.Module):
 
 class MLPQFunction(nn.Module):
 
-    def __init__(self, obs_dim, act_dim, hidden_sizes, activation,use_split=False):
+    def __init__(self, obs_dim, act_dim, hidden_sizes, activation):
         super().__init__()
-        if not use_split:
-            self.q = mlp([obs_dim + act_dim] + list(hidden_sizes) + [1], activation)
-        else:
-            self.q = mlp_switch([obs_dim + act_dim] + list(hidden_sizes) + [1], activation,split_index=-1-act_dim)
+        self.q = mlp([obs_dim + act_dim] + list(hidden_sizes) + [1], activation)
+
 
     def forward(self, obs, act):
         q = self.q(torch.cat([obs, act], dim=-1))
@@ -138,23 +118,3 @@ class MLPCritic(nn.Module):
         # build policy and value functions
         self.q1 = MLPQFunction(obs_dim, act_dim, hidden_sizes, activation)
         self.q2 = MLPQFunction(obs_dim, act_dim, hidden_sizes, activation)
-
-class MLPActorCriticSplit(nn.Module):
-
-    def __init__(self, observation_space, action_space, hidden_sizes=(256,256),
-                 activation=nn.ReLU):
-        super().__init__()
-
-        obs_dim = observation_space.shape[0]
-        act_dim = action_space.shape[0]
-        act_limit = action_space.high[0]
-
-        # build policy and value functions
-        self.pi = SquashedGaussianMLPActor(obs_dim, act_dim, hidden_sizes, activation, act_limit,use_split=True)
-        self.q1 = MLPQFunction(obs_dim, act_dim, hidden_sizes, activation,use_split=True)
-        self.q2 = MLPQFunction(obs_dim, act_dim, hidden_sizes, activation,use_split=True)
-
-    def act(self, obs, deterministic=False):
-        with torch.no_grad():
-            a, _ = self.pi(obs, deterministic, False)
-            return a.cpu().numpy()
